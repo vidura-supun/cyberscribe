@@ -1,0 +1,10 @@
+{
+  "id": "cyberscribe",
+  "name": "CyberScribe",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "description": "Highlight text by regex with custom colors and auto-defang IPs, domains, and emails as you type.",
+  "author": "purpleXsec",
+  "authorUrl": "",
+  "isDesktopOnly": false
+}
