@@ -41,6 +41,8 @@ var FLAT_COLORS = [
 ];
 var DEFAULT_SETTINGS = {
   colorRules: [],
+  plainTextPaste: false,
+  dateTokens: true,
   defang: {
     ips: {
       regex: String.raw`\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b`,
@@ -114,12 +116,72 @@ function isDefanged(text) {
   return text.includes("[.]") || text.includes("[@]");
 }
 var defangTx = import_state.Annotation.define();
+var dateTx = import_state.Annotation.define();
+function utcDateString() {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}`;
+}
+function utcDateTimeString() {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  const date = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}`;
+  const time = `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())}`;
+  return `${date} ${time} UTC`;
+}
 var IOCHighlighter = class extends import_obsidian.Plugin {
   async onload() {
     await this.loadSettings();
     this.addSettingTab(new SettingsTab(this.app, this));
     this.registerEditorExtension(this.buildEditorExtensions());
     this.registerMarkdownPostProcessor(this.processReadingView.bind(this));
+    this.addCommand({
+      id: "process-date-tokens",
+      name: "Process date tokens in note",
+      editorCallback: (editor) => {
+        const tokens = [
+          { pattern: /<\$ datetime-now \$>/g, value: utcDateTimeString },
+          { pattern: /<\$ date-now \$>/g, value: utcDateString }
+        ];
+        let content = editor.getValue();
+        let changed = false;
+        for (const { pattern, value } of tokens) {
+          const replaced = content.replace(pattern, () => {
+            changed = true;
+            return value();
+          });
+          content = replaced;
+        }
+        if (changed)
+          editor.setValue(content);
+      }
+    });
+    this.addCommand({
+      id: "insert-date",
+      name: "Insert current date (YYYY-MM-DD)",
+      editorCallback: (editor) => {
+        editor.replaceSelection(utcDateString());
+      }
+    });
+    this.addCommand({
+      id: "insert-datetime",
+      name: "Insert current datetime (YYYY-MM-DD HH:mm:ss UTC)",
+      editorCallback: (editor) => {
+        editor.replaceSelection(utcDateTimeString());
+      }
+    });
+    this.registerEvent(
+      this.app.workspace.on("editor-paste", (evt, editor) => {
+        var _a;
+        if (!this.settings.plainTextPaste)
+          return;
+        const text = (_a = evt.clipboardData) == null ? void 0 : _a.getData("text/plain");
+        if (text === void 0)
+          return;
+        evt.preventDefault();
+        editor.replaceSelection(text);
+      })
+    );
   }
   buildEditorExtensions() {
     const plugin = this;
@@ -217,7 +279,36 @@ var IOCHighlighter = class extends import_obsidian.Plugin {
       changes.sort((a, b) => b.from - a.from);
       u.view.dispatch({ changes, annotations: defangTx.of(true) });
     });
-    return [colorPlugin, defangListener];
+    const DATE_TOKENS = [
+      { pattern: /<\$ datetime-now \$>/g, value: utcDateTimeString },
+      { pattern: /<\$ date-now \$>/g, value: utcDateString }
+    ];
+    const dateListener = import_view.EditorView.updateListener.of((u) => {
+      if (!u.docChanged)
+        return;
+      if (!plugin.settings.dateTokens)
+        return;
+      if (u.transactions.some((tr) => tr.annotation(dateTx)))
+        return;
+      const changes = [];
+      u.changes.iterChangedRanges((_fa, _ta, fb, tb) => {
+        const lo = Math.max(0, fb - 30);
+        const hi = Math.min(u.state.doc.length, tb + 30);
+        const text = u.state.doc.sliceString(lo, hi);
+        for (const { pattern, value } of DATE_TOKENS) {
+          pattern.lastIndex = 0;
+          let m;
+          while ((m = pattern.exec(text)) !== null) {
+            changes.push({ from: lo + m.index, to: lo + m.index + m[0].length, insert: value() });
+          }
+        }
+      });
+      if (!changes.length)
+        return;
+      changes.sort((a, b) => b.from - a.from);
+      u.view.dispatch({ changes, annotations: dateTx.of(true) });
+    });
+    return [colorPlugin, defangListener, dateListener];
   }
   // ── Reading View coloring ─────────────────────────────────────────────────
   processReadingView(el, _ctx) {
@@ -251,17 +342,19 @@ var IOCHighlighter = class extends import_obsidian.Plugin {
   }
   // ── Settings persistence ──────────────────────────────────────────────────
   async loadSettings() {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m;
     const saved = (_a = await this.loadData()) != null ? _a : {};
     this.settings = {
       ...DEFAULT_SETTINGS,
       ...saved,
+      plainTextPaste: (_b = saved.plainTextPaste) != null ? _b : DEFAULT_SETTINGS.plainTextPaste,
+      dateTokens: (_c = saved.dateTokens) != null ? _c : DEFAULT_SETTINGS.dateTokens,
       defang: {
-        ips: { ...DEFAULT_SETTINGS.defang.ips, ...(_c = (_b = saved.defang) == null ? void 0 : _b.ips) != null ? _c : {} },
-        domains: { ...DEFAULT_SETTINGS.defang.domains, ...(_e = (_d = saved.defang) == null ? void 0 : _d.domains) != null ? _e : {} },
-        emails: { ...DEFAULT_SETTINGS.defang.emails, ...(_g = (_f = saved.defang) == null ? void 0 : _f.emails) != null ? _g : {} },
-        scopeStart: (_i = (_h = saved.defang) == null ? void 0 : _h.scopeStart) != null ? _i : "",
-        scopeEnd: (_k = (_j = saved.defang) == null ? void 0 : _j.scopeEnd) != null ? _k : ""
+        ips: { ...DEFAULT_SETTINGS.defang.ips, ...(_e = (_d = saved.defang) == null ? void 0 : _d.ips) != null ? _e : {} },
+        domains: { ...DEFAULT_SETTINGS.defang.domains, ...(_g = (_f = saved.defang) == null ? void 0 : _f.domains) != null ? _g : {} },
+        emails: { ...DEFAULT_SETTINGS.defang.emails, ...(_i = (_h = saved.defang) == null ? void 0 : _h.emails) != null ? _i : {} },
+        scopeStart: (_k = (_j = saved.defang) == null ? void 0 : _j.scopeStart) != null ? _k : "",
+        scopeEnd: (_m = (_l = saved.defang) == null ? void 0 : _l.scopeEnd) != null ? _m : ""
       }
     };
   }
@@ -310,6 +403,18 @@ var SettingsTab = class extends import_obsidian.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "CyberScribe" });
+    new import_obsidian.Setting(containerEl).setName("Paste as plain text").setDesc("Strip all formatting when pasting. Overrides Obsidian's default paste behaviour.").addToggle(
+      (t) => t.setValue(this.plugin.settings.plainTextPaste).onChange(async (v) => {
+        this.plugin.settings.plainTextPaste = v;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Date tokens").setDesc("Auto-replace <$ date-now $> with YYYY-MM-DD and <$ datetime-now $> with YYYY-MM-DD HH:mm:ss UTC.").addToggle(
+      (t) => t.setValue(this.plugin.settings.dateTokens).onChange(async (v) => {
+        this.plugin.settings.dateTokens = v;
+        await this.plugin.saveSettings();
+      })
+    );
     containerEl.createEl("h3", { text: "Color Rules" });
     containerEl.createEl("p", {
       text: "Highlight matched text in the editor and reading view. Up to 12 rules.",

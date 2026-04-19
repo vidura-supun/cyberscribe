@@ -98,6 +98,23 @@ user@evil.com              ← defanged → user[@]evil[.]com
 1.2.3.4                    ← NOT defanged
 ```
 
+### Paste as Plain Text
+Toggle in settings to strip all formatting on paste — useful when copying from browsers or rich text sources.
+
+### Date Tokens
+Type a token and it auto-replaces with the current UTC date or datetime:
+
+| Token | Output |
+|---|---|
+| `<$ date-now $>` | `2026-04-19` |
+| `<$ datetime-now $>` | `2026-04-19 14:30:00 UTC` |
+
+Can be toggled on/off. Three hotkeys available via **Settings → Hotkeys** (search "CyberScribe"):
+
+- **Process date tokens in note** — replaces all tokens in the current note on demand
+- **Insert current date** — inserts `YYYY-MM-DD` at cursor
+- **Insert current datetime** — inserts `YYYY-MM-DD HH:mm:ss UTC` at cursor
+
 Leave both scope fields blank to apply defanging to the entire note.
 
 ---
