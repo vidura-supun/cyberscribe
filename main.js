@@ -19,7 +19,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // main.ts
 var main_exports = {};
 __export(main_exports, {
-  default: () => IOCHighlighter
+  default: () => CyberScribe
 });
 module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
@@ -39,6 +39,7 @@ var FLAT_COLORS = [
   { name: "Cyan", value: "#00cec9" },
   { name: "Indigo", value: "#6c5ce7" }
 ];
+var VALID_COLORS = new Set(FLAT_COLORS.map((c) => c.value));
 var DEFAULT_SETTINGS = {
   colorRules: [],
   plainTextPaste: false,
@@ -49,7 +50,6 @@ var DEFAULT_SETTINGS = {
       enabled: true
     },
     domains: {
-      // Covers common TLDs including .sh and other short TLDs
       regex: String.raw`\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+(?:com|net|org|io|sh|gov|edu|co|uk|de|fr|ru|cn|jp|au|ca|info|biz|xyz|top|site|online|tech|me|tv|cc|app|dev|mil|int|us|in|br|nl|se|no|fi|dk|pl|ch|at|be|nz|sg|hk|tw|kr|za|mx|ar|cl|pe|ph|id|th|vn|pk|bd|ng|ke|eg|ma|dz|tn|ly|sd|gh|tz|ci|cm|sn|ug|zm|zw)\b`,
       enabled: true
     },
@@ -61,6 +61,9 @@ var DEFAULT_SETTINGS = {
     scopeEnd: ""
   }
 };
+var settingsChangedEffect = import_state.StateEffect.define();
+var defangTx = import_state.Annotation.define();
+var dateTx = import_state.Annotation.define();
 function getScopeRanges(docText, scopeStart, scopeEnd) {
   const len = docText.length;
   if (!scopeStart && !scopeEnd)
@@ -80,28 +83,40 @@ function getScopeRanges(docText, scopeStart, scopeEnd) {
   if (scopeStart && !startRe && scopeEnd && !endRe)
     return [{ from: 0, to: len }];
   if (!startRe && endRe) {
-    const m = endRe.exec(docText);
+    const m = safeExec(endRe, docText);
     return [{ from: 0, to: m ? m.index : len }];
   }
   if (startRe && !endRe) {
-    const m = startRe.exec(docText);
+    const m = safeExec(startRe, docText);
     return m ? [{ from: m.index + m[0].length, to: len }] : [];
   }
   const ranges = [];
   let sm;
-  while ((sm = startRe.exec(docText)) !== null) {
+  while ((sm = safeExec(startRe, docText)) !== null) {
+    if (sm[0].length === 0) {
+      startRe.lastIndex++;
+      continue;
+    }
     const from = sm.index + sm[0].length;
     endRe.lastIndex = from;
-    const em = endRe.exec(docText);
+    const em = safeExec(endRe, docText);
     if (em) {
+      if (em[0].length === 0)
+        endRe.lastIndex++;
       ranges.push({ from, to: em.index });
-      startRe.lastIndex = em.index + em[0].length;
+      startRe.lastIndex = Math.max(startRe.lastIndex, em.index + em[0].length);
     } else {
       ranges.push({ from, to: len });
       break;
     }
   }
   return ranges;
+}
+function safeExec(re, text) {
+  const m = re.exec(text);
+  if (m && m[0].length === 0)
+    re.lastIndex++;
+  return m;
 }
 function defangText(text, type) {
   if (type === "ips" || type === "domains") {
@@ -115,8 +130,6 @@ function defangText(text, type) {
 function isDefanged(text) {
   return text.includes("[.]") || text.includes("[@]");
 }
-var defangTx = import_state.Annotation.define();
-var dateTx = import_state.Annotation.define();
 function utcDateString() {
   const now = new Date();
   const pad = (n) => String(n).padStart(2, "0");
@@ -129,7 +142,17 @@ function utcDateTimeString() {
   const time = `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())}`;
   return `${date} ${time} UTC`;
 }
-var IOCHighlighter = class extends import_obsidian.Plugin {
+function isInsideCodeOrLink(node) {
+  let p = node.parentElement;
+  while (p) {
+    const tag = p.tagName.toLowerCase();
+    if (tag === "code" || tag === "pre" || tag === "a")
+      return true;
+    p = p.parentElement;
+  }
+  return false;
+}
+var CyberScribe = class extends import_obsidian.Plugin {
   async onload() {
     await this.loadSettings();
     this.addSettingTab(new SettingsTab(this.app, this));
@@ -143,17 +166,26 @@ var IOCHighlighter = class extends import_obsidian.Plugin {
           { pattern: /<\$ datetime-now \$>/g, value: utcDateTimeString },
           { pattern: /<\$ date-now \$>/g, value: utcDateString }
         ];
-        let content = editor.getValue();
-        let changed = false;
+        const content = editor.getValue();
+        const changes = [];
         for (const { pattern, value } of tokens) {
-          const replaced = content.replace(pattern, () => {
-            changed = true;
-            return value();
-          });
-          content = replaced;
+          const snapshot = value();
+          pattern.lastIndex = 0;
+          let m;
+          while ((m = pattern.exec(content)) !== null) {
+            if (m[0].length === 0) {
+              pattern.lastIndex++;
+              continue;
+            }
+            changes.push({ from: m.index, to: m.index + m[0].length, text: snapshot });
+          }
         }
-        if (changed)
-          editor.setValue(content);
+        if (!changes.length)
+          return;
+        changes.sort((a, b) => b.from - a.from);
+        for (const { from, to, text } of changes) {
+          editor.replaceRange(text, editor.offsetToPos(from), editor.offsetToPos(to));
+        }
       }
     });
     this.addCommand({
@@ -176,7 +208,7 @@ var IOCHighlighter = class extends import_obsidian.Plugin {
         if (!this.settings.plainTextPaste)
           return;
         const text = (_a = evt.clipboardData) == null ? void 0 : _a.getData("text/plain");
-        if (text === void 0)
+        if (!text)
           return;
         evt.preventDefault();
         editor.replaceSelection(text);
@@ -191,8 +223,9 @@ var IOCHighlighter = class extends import_obsidian.Plugin {
           this.decorations = buildDecorations(view);
         }
         update(u) {
-          if (u.docChanged || u.viewportChanged)
+          if (u.docChanged || u.viewportChanged || u.transactions.some((tr) => tr.effects.some((e) => e.is(settingsChangedEffect)))) {
             this.decorations = buildDecorations(u.view);
+          }
         }
       },
       { decorations: (v) => v.decorations }
@@ -211,6 +244,10 @@ var IOCHighlighter = class extends import_obsidian.Plugin {
           }
           let m;
           while ((m = re.exec(text)) !== null) {
+            if (m[0].length === 0) {
+              re.lastIndex++;
+              continue;
+            }
             hits.push({ from: from + m.index, to: from + m.index + m[0].length, color: rule.color });
           }
         }
@@ -265,6 +302,10 @@ var IOCHighlighter = class extends import_obsidian.Plugin {
           }
           let m;
           while ((m = re.exec(text)) !== null) {
+            if (m[0].length === 0) {
+              re.lastIndex++;
+              continue;
+            }
             const abs = lo + m.index;
             const absEnd = abs + m[0].length;
             if (!inScope(abs, absEnd) || overlaps(abs, absEnd) || isDefanged(m[0]))
@@ -299,6 +340,10 @@ var IOCHighlighter = class extends import_obsidian.Plugin {
           pattern.lastIndex = 0;
           let m;
           while ((m = pattern.exec(text)) !== null) {
+            if (m[0].length === 0) {
+              pattern.lastIndex++;
+              continue;
+            }
             changes.push({ from: lo + m.index, to: lo + m.index + m[0].length, insert: value() });
           }
         }
@@ -322,6 +367,8 @@ var IOCHighlighter = class extends import_obsidian.Plugin {
     while (n = walker.nextNode())
       nodes.push(n);
     for (const node of nodes) {
+      if (isInsideCodeOrLink(node))
+        continue;
       const text = (_a = node.nodeValue) != null ? _a : "";
       const spans = buildSpans(text, rules);
       if (spans.length === 1 && !spans[0].color)
@@ -330,7 +377,8 @@ var IOCHighlighter = class extends import_obsidian.Plugin {
       for (const { text: t, color } of spans) {
         if (color) {
           const s = document.createElement("span");
-          s.style.cssText = `color:${color};font-weight:600`;
+          s.style.color = color;
+          s.style.fontWeight = "600";
           s.textContent = t;
           frag.appendChild(s);
         } else {
@@ -342,24 +390,40 @@ var IOCHighlighter = class extends import_obsidian.Plugin {
   }
   // ── Settings persistence ──────────────────────────────────────────────────
   async loadSettings() {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n;
     const saved = (_a = await this.loadData()) != null ? _a : {};
     this.settings = {
       ...DEFAULT_SETTINGS,
       ...saved,
       plainTextPaste: (_b = saved.plainTextPaste) != null ? _b : DEFAULT_SETTINGS.plainTextPaste,
       dateTokens: (_c = saved.dateTokens) != null ? _c : DEFAULT_SETTINGS.dateTokens,
+      // Sanitize saved color rules — guard against missing/invalid fields from old versions (#10)
+      colorRules: ((_d = saved.colorRules) != null ? _d : []).map((r) => {
+        var _a2, _b2;
+        return {
+          id: typeof r.id === "string" ? r.id : (_b2 = (_a2 = crypto.randomUUID) == null ? void 0 : _a2.call(crypto)) != null ? _b2 : Math.random().toString(36),
+          regex: typeof r.regex === "string" ? r.regex : "",
+          color: VALID_COLORS.has(r.color) ? r.color : FLAT_COLORS[0].value,
+          enabled: typeof r.enabled === "boolean" ? r.enabled : true
+        };
+      }),
       defang: {
-        ips: { ...DEFAULT_SETTINGS.defang.ips, ...(_e = (_d = saved.defang) == null ? void 0 : _d.ips) != null ? _e : {} },
-        domains: { ...DEFAULT_SETTINGS.defang.domains, ...(_g = (_f = saved.defang) == null ? void 0 : _f.domains) != null ? _g : {} },
-        emails: { ...DEFAULT_SETTINGS.defang.emails, ...(_i = (_h = saved.defang) == null ? void 0 : _h.emails) != null ? _i : {} },
-        scopeStart: (_k = (_j = saved.defang) == null ? void 0 : _j.scopeStart) != null ? _k : "",
-        scopeEnd: (_m = (_l = saved.defang) == null ? void 0 : _l.scopeEnd) != null ? _m : ""
+        ips: { ...DEFAULT_SETTINGS.defang.ips, ...(_f = (_e = saved.defang) == null ? void 0 : _e.ips) != null ? _f : {} },
+        domains: { ...DEFAULT_SETTINGS.defang.domains, ...(_h = (_g = saved.defang) == null ? void 0 : _g.domains) != null ? _h : {} },
+        emails: { ...DEFAULT_SETTINGS.defang.emails, ...(_j = (_i = saved.defang) == null ? void 0 : _i.emails) != null ? _j : {} },
+        scopeStart: (_l = (_k = saved.defang) == null ? void 0 : _k.scopeStart) != null ? _l : "",
+        scopeEnd: (_n = (_m = saved.defang) == null ? void 0 : _m.scopeEnd) != null ? _n : ""
       }
     };
   }
   async saveSettings() {
     await this.saveData(this.settings);
+    this.app.workspace.iterateAllLeaves((leaf) => {
+      var _a, _b;
+      const cm = (_b = (_a = leaf.view) == null ? void 0 : _a.editor) == null ? void 0 : _b.cm;
+      if (cm)
+        cm.dispatch({ effects: settingsChangedEffect.of() });
+    });
   }
 };
 function buildSpans(text, rules) {
@@ -373,12 +437,16 @@ function buildSpans(text, rules) {
     }
     let m;
     while ((m = re.exec(text)) !== null) {
+      if (m[0].length === 0) {
+        re.lastIndex++;
+        continue;
+      }
       hits.push({ start: m.index, end: m.index + m[0].length, color: rule.color });
     }
   }
   if (!hits.length)
     return [{ text, color: null }];
-  hits.sort((a, b) => a.start - b.start);
+  hits.sort((a, b) => a.start - b.start || 0);
   const out = [];
   let pos = 0, cursor = 0;
   for (const { start, end, color } of hits) {
@@ -421,10 +489,10 @@ var SettingsTab = class extends import_obsidian.PluginSettingTab {
       attr: { style: "color: var(--text-muted); margin-top: 0;" }
     });
     const rules = this.plugin.settings.colorRules;
-    for (let i = 0; i < rules.length; i++) {
-      const rule = rules[i];
+    for (const rule of rules) {
       const colorMeta = (_a = FLAT_COLORS.find((c) => c.value === rule.color)) != null ? _a : FLAT_COLORS[0];
-      new import_obsidian.Setting(containerEl).setName(`Rule ${i + 1}`).addText(
+      let swatch;
+      new import_obsidian.Setting(containerEl).addText(
         (t) => t.setPlaceholder("Regex pattern  e.g.  ---OODA---").setValue(rule.regex).onChange(async (v) => {
           rule.regex = v;
           await this.plugin.saveSettings();
@@ -434,7 +502,8 @@ var SettingsTab = class extends import_obsidian.PluginSettingTab {
         d.setValue(rule.color).onChange(async (v) => {
           rule.color = v;
           await this.plugin.saveSettings();
-          this.display();
+          if (swatch)
+            swatch.style.background = v;
         });
       }).addToggle(
         (t) => t.setValue(rule.enabled).onChange(async (v) => {
@@ -442,13 +511,18 @@ var SettingsTab = class extends import_obsidian.PluginSettingTab {
           await this.plugin.saveSettings();
         })
       ).addButton(
-        (b) => b.setButtonText("\u2715").setWarning().onClick(async () => {
-          rules.splice(i, 1);
-          await this.plugin.saveSettings();
-          this.display();
-        })
+        (b) => (
+          // Use rule.id to find the rule rather than captured index to avoid race on double-click (#25)
+          b.setButtonText("\u2715").setWarning().onClick(async () => {
+            const idx = rules.findIndex((r) => r.id === rule.id);
+            if (idx !== -1)
+              rules.splice(idx, 1);
+            await this.plugin.saveSettings();
+            this.display();
+          })
+        )
       ).then((s) => {
-        s.controlEl.createEl("span", {
+        swatch = s.controlEl.createEl("span", {
           attr: {
             style: `display:inline-block;width:14px;height:14px;border-radius:50%;background:${rule.color};margin-left:6px;vertical-align:middle;`,
             title: colorMeta.name
@@ -459,8 +533,9 @@ var SettingsTab = class extends import_obsidian.PluginSettingTab {
     if (rules.length < 12) {
       new import_obsidian.Setting(containerEl).addButton(
         (b) => b.setButtonText("+ Add Rule").setCta().onClick(async () => {
+          var _a2, _b;
           rules.push({
-            id: crypto.randomUUID(),
+            id: (_b = (_a2 = crypto.randomUUID) == null ? void 0 : _a2.call(crypto)) != null ? _b : Math.random().toString(36).slice(2),
             regex: "",
             color: FLAT_COLORS[rules.length % FLAT_COLORS.length].value,
             enabled: true
