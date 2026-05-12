@@ -1,6 +1,6 @@
 # CyberScribe — Manual Installation
 
-> CyberScribe is an Obsidian plugin for security analysts. It highlights text by regex with custom colors and auto-defangs IPs, domains, and emails as you type.
+> CyberScribe is an Obsidian plugin for security analysts. It highlights text by regex with custom colors, auto-defangs IOCs as you type, and tracks investigation and action timers for case management.
 >
 > The plugin has been submitted to the Obsidian Community Plugins directory and is pending review. In the meantime, you can install it manually using the steps below.
 
@@ -68,6 +68,39 @@ Your folder should look like this:
 
 ## Features
 
+### Investigation Timer
+
+Tracks time spent on each OODA phase — investigation and taking action — with pause (hold) support.
+
+**How it works:**
+
+- The 45-minute investigation timer **auto-starts** when you paste content into an empty note inside your configured timer folder.
+- Open the timer panel via the **clock icon** in the left ribbon, or run **"Open investigation timer panel"** from the command palette.
+
+**Timer panel controls:**
+
+| State | Buttons |
+|---|---|
+| Idle | Start Investigation |
+| Investigating | ⏸️ Hold · Take Action ✏️ · Reset |
+| Investigating (on hold) | ▶️ Resume · Take Action ✏️ · Reset |
+| Taking Action | ⏸️ Hold · 🔍 Investigate · Stop |
+| Taking Action (on hold) | ▶️ Resume · 🔍 Investigate · Stop |
+
+- **Hold** — pauses the current timer without losing elapsed time.
+- **Resume** — continues from where it was paused.
+- **Take Action** — switches to a fresh 20-minute action countdown.
+- **Investigate** — switches back to a fresh 45-minute investigation countdown.
+- **Stop / Reset** — clears the timer entirely.
+
+The **status bar** shows the active phase and remaining time (e.g. `🔍 38:22` or `✏️ 14:05 ⏸️`). Clicking the status bar item toggles Hold/Resume.
+
+**Settings:**
+- **Investigation timer** — enable/disable the feature globally.
+- **Investigation timer folder** — restrict auto-start to notes inside a specific folder (e.g. `OODAS`). Leave blank to apply vault-wide.
+
+---
+
 ### Color Rules
 Define up to 12 regex → color rules to highlight matching text inline, in both Live Preview and Reading view.
 
@@ -80,6 +113,7 @@ Automatically rewrites IOCs to defanged format as you type — modifying the fil
 
 | IOC Type | Input | Output |
 |---|---|---|
+| URL | `https://evil.com/path` | `hxxps://evil.com/path` |
 | IP Address | `1.2.3.4` | `1[.]2[.]3[.]4` |
 | Domain | `evil.sh` | `evil[.]sh` |
 | Email | `user@evil.com` | `user[@]evil[.]com` |
@@ -125,7 +159,7 @@ Open **Settings → CyberScribe** to configure:
 
 - **Color Rules** — Add/remove regex → color pairs (up to 12), toggle each on/off
 - **Auto-Defang → Scope** — Optional start/end regex to restrict the defang region
-- **Auto-Defang → IOC Types** — Per-type regex (IPs, Domains, Emails) and enable/disable toggles
+- **Auto-Defang → IOC Types** — Per-type regex (URLs, IPs, Domains, Emails) and enable/disable toggles
 
 ---
 
