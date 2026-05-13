@@ -819,40 +819,6 @@ var SettingsTab = class extends import_obsidian.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     new import_obsidian.Setting(containerEl).setName("CyberScribe").setHeading();
-    new import_obsidian.Setting(containerEl).setName("Configuration").setDesc("Export your settings to a file to back them up, or import a previously saved config.").addButton(
-      (b) => b.setButtonText("Export config").onClick(() => {
-        const json = JSON.stringify(this.plugin.settings, null, 2);
-        const blob = new Blob([json], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "cyberscribe-config.json";
-        a.click();
-        URL.revokeObjectURL(url);
-      })
-    ).addButton(
-      (b) => b.setButtonText("Import config").onClick(() => {
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = ".json";
-        input.onchange = async () => {
-          var _b;
-          const file = (_b = input.files) == null ? void 0 : _b[0];
-          if (!file) return;
-          try {
-            const text = await file.text();
-            const imported = JSON.parse(text);
-            this.plugin.settings = { ...this.plugin.settings, ...imported };
-            await this.plugin.saveSettings();
-            this.display();
-            new import_obsidian.Notice("CyberScribe: Config imported.");
-          } catch (e) {
-            new import_obsidian.Notice("CyberScribe: Invalid config file.");
-          }
-        };
-        input.click();
-      })
-    );
     new import_obsidian.Setting(containerEl).setName("Paste as plain text").setDesc("Strip all formatting when pasting. Overrides Obsidian's default paste behaviour.").addToggle(
       (t) => t.setValue(this.plugin.settings.plainTextPaste).onChange(async (v) => {
         this.plugin.settings.plainTextPaste = v;

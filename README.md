@@ -44,6 +44,8 @@ C:\Users\<you>\Documents\<vault-name>\.obsidian\plugins\cyberscribe\
 
 Copy both `main.js` and `manifest.json` into the `cyberscribe` folder you just created.
 
+> **Updating to a new version?** Only replace `main.js` (and `manifest.json`). Your settings are saved automatically in `data.json` — do not overwrite or delete it.
+
 Your folder should look like this:
 
 ```
