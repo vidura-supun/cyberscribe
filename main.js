@@ -40,8 +40,8 @@ var FLAT_COLORS = [
   { name: "Indigo", value: "#6c5ce7" }
 ];
 var VALID_COLORS = new Set(FLAT_COLORS.map((c) => c.value));
-var INVESTIGATION_DURATION = 45 * 60 * 1e3;
-var ACTION_DURATION = 20 * 60 * 1e3;
+var INVESTIGATION_DURATION_DEFAULT = 45;
+var ACTION_DURATION_DEFAULT = 20;
 var TIMER_VIEW_TYPE = "cyberscribe-timer";
 var DEFAULT_SETTINGS = {
   colorRules: [],
@@ -49,6 +49,8 @@ var DEFAULT_SETTINGS = {
   dateTokens: true,
   timerEnabled: true,
   timerFolder: "",
+  investigationMins: 45,
+  actionMins: 20,
   defang: {
     ips: {
       regex: String.raw`\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b`,
@@ -185,13 +187,19 @@ var CyberScribe = class extends import_obsidian.Plugin {
     const pad = (n) => String(n).padStart(2, "0");
     return `${pad(Math.floor(s / 60))}:${pad(s % 60)}`;
   }
+  investigationDurationMs() {
+    return this.settings.investigationMins * 60 * 1e3;
+  }
+  actionDurationMs() {
+    return this.settings.actionMins * 60 * 1e3;
+  }
   updateTimerBar() {
     if (this.timerBar) {
       if (!this.settings.timerEnabled || this.timerState === "idle") {
         this.timerBar.style.display = "none";
       } else {
         this.timerBar.style.display = "inline-flex";
-        const duration = this.timerState === "investigating" ? INVESTIGATION_DURATION : ACTION_DURATION;
+        const duration = this.timerState === "investigating" ? this.investigationDurationMs() : this.actionDurationMs();
         const remaining = Math.max(0, duration - this.timerElapsedMs());
         const icon = this.timerState === "investigating" ? "\u{1F50D}" : "\u270F\uFE0F";
         const pauseIcon = this.timerPaused ? " \u23F8\uFE0F" : "";
@@ -223,10 +231,10 @@ var CyberScribe = class extends import_obsidian.Plugin {
     this.timerElapsedAccum = 0;
     this.timerLastStart = Date.now();
     this.timerInterval = window.setInterval(() => {
-      if (this.timerElapsedMs() >= INVESTIGATION_DURATION) {
+      if (this.timerElapsedMs() >= this.investigationDurationMs()) {
         clearInterval(this.timerInterval);
         this.timerInterval = null;
-        this.timerElapsedAccum = INVESTIGATION_DURATION;
+        this.timerElapsedAccum = this.investigationDurationMs();
         this.timerLastStart = null;
         this.updateTimerBar();
         new import_obsidian.Notice("CyberScribe: Investigation time is up!");
@@ -269,7 +277,7 @@ var CyberScribe = class extends import_obsidian.Plugin {
   resumeTimer() {
     if (!this.timerPaused || this.timerState === "idle") return;
     this.timerPaused = false;
-    const duration = this.timerState === "investigating" ? INVESTIGATION_DURATION : ACTION_DURATION;
+    const duration = this.timerState === "investigating" ? this.investigationDurationMs() : this.actionDurationMs();
     const noticeMsg = this.timerState === "investigating" ? "CyberScribe: Investigation time is up!" : "CyberScribe: Action time is up!";
     this.timerLastStart = Date.now();
     this.timerInterval = window.setInterval(() => {
@@ -296,10 +304,10 @@ var CyberScribe = class extends import_obsidian.Plugin {
     this.timerElapsedAccum = 0;
     this.timerLastStart = Date.now();
     this.timerInterval = window.setInterval(() => {
-      if (this.timerElapsedMs() >= ACTION_DURATION) {
+      if (this.timerElapsedMs() >= this.actionDurationMs()) {
         clearInterval(this.timerInterval);
         this.timerInterval = null;
-        this.timerElapsedAccum = ACTION_DURATION;
+        this.timerElapsedAccum = this.actionDurationMs();
         this.timerLastStart = null;
         this.updateTimerBar();
         new import_obsidian.Notice("CyberScribe: Action time is up!");
@@ -320,10 +328,10 @@ var CyberScribe = class extends import_obsidian.Plugin {
     this.timerElapsedAccum = 0;
     this.timerLastStart = Date.now();
     this.timerInterval = window.setInterval(() => {
-      if (this.timerElapsedMs() >= INVESTIGATION_DURATION) {
+      if (this.timerElapsedMs() >= this.investigationDurationMs()) {
         clearInterval(this.timerInterval);
         this.timerInterval = null;
-        this.timerElapsedAccum = INVESTIGATION_DURATION;
+        this.timerElapsedAccum = this.investigationDurationMs();
         this.timerLastStart = null;
         this.updateTimerBar();
         new import_obsidian.Notice("CyberScribe: Investigation time is up!");
@@ -643,6 +651,8 @@ var CyberScribe = class extends import_obsidian.Plugin {
       dateTokens: (_c = saved.dateTokens) != null ? _c : DEFAULT_SETTINGS.dateTokens,
       timerEnabled: (_d = saved.timerEnabled) != null ? _d : DEFAULT_SETTINGS.timerEnabled,
       timerFolder: (_e = saved.timerFolder) != null ? _e : DEFAULT_SETTINGS.timerFolder,
+      investigationMins: saved.investigationMins != null ? saved.investigationMins : DEFAULT_SETTINGS.investigationMins,
+      actionMins: saved.actionMins != null ? saved.actionMins : DEFAULT_SETTINGS.actionMins,
       // Sanitize saved color rules — guard against missing/invalid fields from old versions (#10)
       colorRules: ((_f = saved.colorRules) != null ? _f : []).map((r) => {
         var _a2, _b2;
@@ -759,7 +769,7 @@ var TimerView = class extends import_obsidian.ItemView {
       }
       return;
     }
-    const duration = state === "investigating" ? INVESTIGATION_DURATION : ACTION_DURATION;
+    const duration = state === "investigating" ? this.plugin.investigationDurationMs() : this.plugin.actionDurationMs();
     const remaining = Math.max(0, duration - this.plugin.timerElapsedMs());
     const isPaused = this.plugin.timerPaused;
     if (state === "idle") {
@@ -844,6 +854,24 @@ var SettingsTab = class extends import_obsidian.PluginSettingTab {
       (t) => t.setPlaceholder("e.g. Investigations").setValue(this.plugin.settings.timerFolder).onChange(async (v) => {
         this.plugin.settings.timerFolder = v;
         await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Investigation duration (minutes)").setDesc("How long the investigation phase runs. Default: 45.").addText(
+      (t) => t.setPlaceholder("45").setValue(String(this.plugin.settings.investigationMins)).onChange(async (v) => {
+        const n = parseInt(v);
+        if (!isNaN(n) && n > 0) {
+          this.plugin.settings.investigationMins = n;
+          await this.plugin.saveSettings();
+        }
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Action duration (minutes)").setDesc("How long the taking action phase runs. Default: 20.").addText(
+      (t) => t.setPlaceholder("20").setValue(String(this.plugin.settings.actionMins)).onChange(async (v) => {
+        const n = parseInt(v);
+        if (!isNaN(n) && n > 0) {
+          this.plugin.settings.actionMins = n;
+          await this.plugin.saveSettings();
+        }
       })
     );
     new import_obsidian.Setting(containerEl).setName("Color rules").setDesc("Highlight matched text in the editor and reading view. Up to 12 rules.").setHeading();
