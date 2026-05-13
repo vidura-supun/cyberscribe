@@ -1,4 +1,4 @@
-# CyberScribe — Manual Installation
+# CyberScribe
 
 > CyberScribe is an Obsidian plugin for security analysts. It highlights text by regex with custom colors, auto-defangs IOCs as you type, and tracks investigation and action timers for case management.
 
