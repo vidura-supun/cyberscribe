@@ -1,8 +1,6 @@
 # CyberScribe — Manual Installation
 
 > CyberScribe is an Obsidian plugin for security analysts. It highlights text by regex with custom colors, auto-defangs IOCs as you type, and tracks investigation and action timers for case management.
->
-> The plugin has been submitted to the Obsidian Community Plugins directory and is pending review. In the meantime, you can install it manually using the steps below.
 
 ---
 
@@ -10,7 +8,7 @@
 
 ### Step 1 — Download the plugin files
 
-Download the following two files from the [latest release](https://github.com/vidura-supun/obsidian-cyberscribe/releases/latest):
+Download the following two files from the [latest release](https://github.com/vidura-supun/cyberscribe/releases/latest):
 
 - `main.js`
 - `manifest.json`
@@ -165,8 +163,8 @@ Open **Settings → CyberScribe** to configure:
 
 ## Source Code
 
-The full source code is available at: https://github.com/vidura-supun/obsidian-cyberscribe
+The full source code is available at: https://github.com/vidura-supun/cyberscribe
 
 ## License
 
-MIT License — see [LICENSE](https://github.com/vidura-supun/obsidian-cyberscribe/blob/main/LICENSE)
+MIT License — see [LICENSE](https://github.com/vidura-supun/cyberscribe/blob/main/LICENSE)

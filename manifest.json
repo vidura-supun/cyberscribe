@@ -1,9 +1,9 @@
 {
   "id": "cyberscribe",
   "name": "CyberScribe",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "minAppVersion": "1.0.0",
-  "description": "Highlight text by regex with custom colors and auto-defang IPs, domains, and emails as you type.",
+  "description": "Highlight IOCs by regex with custom colors, auto-defang IPs/domains/emails/URLs, and track investigation timers for case management.",
   "author": "purpleXsec",
   "authorUrl": "",
   "isDesktopOnly": false
