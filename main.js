@@ -49,8 +49,8 @@ var DEFAULT_SETTINGS = {
   dateTokens: true,
   timerEnabled: true,
   timerFolder: "",
-  investigationMins: 45,
-  actionMins: 20,
+  investigationMins: 5,
+  actionMins: 5,
   defang: {
     ips: {
       regex: String.raw`\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b`,
@@ -856,7 +856,7 @@ var SettingsTab = class extends import_obsidian.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Investigation duration (minutes)").setDesc("How long the investigation phase runs. Default: 45.").addText(
+    new import_obsidian.Setting(containerEl).setName("Investigation duration (minutes)").setDesc("How long the investigation phase runs. Default: 5.").addText(
       (t) => t.setPlaceholder("45").setValue(String(this.plugin.settings.investigationMins)).onChange(async (v) => {
         const n = parseInt(v);
         if (!isNaN(n) && n > 0) {
@@ -865,7 +865,7 @@ var SettingsTab = class extends import_obsidian.PluginSettingTab {
         }
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Action duration (minutes)").setDesc("How long the taking action phase runs. Default: 20.").addText(
+    new import_obsidian.Setting(containerEl).setName("Action duration (minutes)").setDesc("How long the taking action phase runs. Default: 5.").addText(
       (t) => t.setPlaceholder("20").setValue(String(this.plugin.settings.actionMins)).onChange(async (v) => {
         const n = parseInt(v);
         if (!isNaN(n) && n > 0) {

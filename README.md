@@ -98,8 +98,8 @@ The **status bar** shows the active phase and remaining time (e.g. `🔍 38:22` 
 **Settings:**
 - **Investigation timer** — enable/disable the feature globally.
 - **Investigation timer folder** — restrict auto-start to notes inside a specific folder (e.g. `OODAS`). Leave blank to apply vault-wide.
-- **Investigation duration (minutes)** — how long the investigation phase runs. Default: 45.
-- **Action duration (minutes)** — how long the taking action phase runs. Default: 20.
+- **Investigation duration (minutes)** — how long the investigation phase runs. Default: 5.
+- **Action duration (minutes)** — how long the taking action phase runs. Default: 5.
 
 ---
 
