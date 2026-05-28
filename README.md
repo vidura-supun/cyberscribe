@@ -1,6 +1,6 @@
 # CyberScribe
 
-> CyberScribe is an Obsidian plugin for security analysts. It highlights text by regex with custom colors, auto-defangs IOCs as you type, and tracks investigation and action timers for case management.
+> CyberScribe is an Obsidian plugin for security analysts. It highlights text by regex with custom colors, auto-defangs IOCs as you type, tracks investigation and action timers for case management, and converts local timestamps to UTC on paste.
 
 ---
 
@@ -70,11 +70,11 @@ Your folder should look like this:
 
 ### Investigation Timer
 
-Tracks time spent on each OODA phase — investigation and taking action — with pause (hold) support.
+Tracks time spent on each OODA phase — investigation (45 min) and taking action (20 min).
 
 **How it works:**
 
-- The 45-minute investigation timer **auto-starts** when you paste content into an empty note inside your configured timer folder.
+- The investigation timer **auto-starts** when you paste content into an empty note inside your configured timer folder.
 - Open the timer panel via the **clock icon** in the left ribbon, or run **"Open investigation timer panel"** from the command palette.
 
 **Timer panel controls:**
@@ -82,24 +82,17 @@ Tracks time spent on each OODA phase — investigation and taking action — wit
 | State | Buttons |
 |---|---|
 | Idle | Start Investigation |
-| Investigating | ⏸️ Hold · Take Action ✏️ · Reset |
-| Investigating (on hold) | ▶️ Resume · Take Action ✏️ · Reset |
-| Taking Action | ⏸️ Hold · 🔍 Investigate · Stop |
-| Taking Action (on hold) | ▶️ Resume · 🔍 Investigate · Stop |
+| Investigating | Take Action ✏️ · Reset |
+| Taking Action | Stop |
 
-- **Hold** — pauses the current timer without losing elapsed time.
-- **Resume** — continues from where it was paused.
 - **Take Action** — switches to a fresh 20-minute action countdown.
-- **Investigate** — switches back to a fresh 45-minute investigation countdown.
 - **Stop / Reset** — clears the timer entirely.
 
-The **status bar** shows the active phase and remaining time (e.g. `🔍 38:22` or `✏️ 14:05 ⏸️`). Clicking the status bar item toggles Hold/Resume.
+The **status bar** shows the active phase and remaining time (e.g. `🔍 38:22` or `✏️ 14:05`). Clicking the status bar item while investigating advances to the action phase; clicking while taking action resets the timer.
 
 **Settings:**
 - **Investigation timer** — enable/disable the feature globally.
 - **Investigation timer folder** — restrict auto-start to notes inside a specific folder (e.g. `OODAS`). Leave blank to apply vault-wide.
-- **Investigation duration (minutes)** — how long the investigation phase runs. Default: 5.
-- **Action duration (minutes)** — how long the taking action phase runs. Default: 5.
 
 ---
 
@@ -153,6 +146,31 @@ Can be toggled on/off. Three hotkeys available via **Settings → Hotkeys** (sea
 
 Leave both scope fields blank to apply defanging to the entire note.
 
+### Local Time → UTC Conversion
+
+Automatically converts local timestamps to UTC when you paste them into a note, keeping the original in brackets for reference.
+
+**Example:**
+
+Input (pasted):
+```
+May 27, 2026 12:17 PM
+```
+
+Output (converted, source timezone UTC+8):
+```
+2026-05-27 04:17 UTC (May 27, 2026 12:17 PM UTC+8)
+```
+
+Supported format: `Month DD, YYYY HH:MM AM/PM` (e.g. `January 3, 2025 9:45 AM`)
+
+**Settings:**
+- **Enable** — toggle conversion on/off.
+- **Local timezone** — UTC offset of the source timestamps. Examples: `+8` for UTC+8, `-5` for UTC-5, `+5:30` for IST.
+- **Scope start / end** — optional regex markers to restrict conversion to a region of the note (same mechanism as defang scope). Leave blank to convert anywhere in the note.
+
+**Command:** Run **"Convert local timestamps to UTC (selection or whole note)"** from the command palette to convert timestamps in the current selection or the entire note on demand.
+
 ---
 
 ## Configuration
@@ -162,6 +180,7 @@ Open **Settings → CyberScribe** to configure:
 - **Color Rules** — Add/remove regex → color pairs (up to 12), toggle each on/off
 - **Auto-Defang → Scope** — Optional start/end regex to restrict the defang region
 - **Auto-Defang → IOC Types** — Per-type regex (URLs, IPs, Domains, Emails) and enable/disable toggles
+- **Local time → UTC conversion** — Enable/disable, set the source timezone offset, and optionally limit conversion to a scoped region
 
 ---
 

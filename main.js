@@ -40,8 +40,8 @@ var FLAT_COLORS = [
   { name: "Indigo", value: "#6c5ce7" }
 ];
 var VALID_COLORS = new Set(FLAT_COLORS.map((c) => c.value));
-var INVESTIGATION_DURATION_DEFAULT = 45;
-var ACTION_DURATION_DEFAULT = 20;
+var INVESTIGATION_DURATION = 45 * 60 * 1e3;
+var ACTION_DURATION = 20 * 60 * 1e3;
 var TIMER_VIEW_TYPE = "cyberscribe-timer";
 var DEFAULT_SETTINGS = {
   colorRules: [],
@@ -49,8 +49,6 @@ var DEFAULT_SETTINGS = {
   dateTokens: true,
   timerEnabled: true,
   timerFolder: "",
-  investigationMins: 5,
-  actionMins: 5,
   defang: {
     ips: {
       regex: String.raw`\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b`,
@@ -68,6 +66,12 @@ var DEFAULT_SETTINGS = {
       regex: String.raw`https?://[^\s<>"'\]]+`,
       enabled: true
     },
+    scopeStart: "",
+    scopeEnd: ""
+  },
+  timeConvert: {
+    enabled: false,
+    timezoneOffset: "+0",
     scopeStart: "",
     scopeEnd: ""
   }
@@ -168,11 +172,61 @@ function isInsideCodeOrLink(node) {
   }
   return false;
 }
+var MONTH_INDEX = {
+  jan: 0,
+  feb: 1,
+  mar: 2,
+  apr: 3,
+  may: 4,
+  jun: 5,
+  jul: 6,
+  aug: 7,
+  sep: 8,
+  oct: 9,
+  nov: 10,
+  dec: 11
+};
+function parseTimezoneOffset(tz) {
+  const s = tz.trim().replace(/^UTC/i, "");
+  const m = s.match(/^([+-]?)(\d{1,2})(?::(\d{2}))?$/);
+  if (!m)
+    return 0;
+  const sign = m[1] === "-" ? -1 : 1;
+  return sign * (parseInt(m[2]) + (m[3] ? parseInt(m[3]) / 60 : 0));
+}
+function formatOffset(offsetHours) {
+  const sign = offsetHours >= 0 ? "+" : "-";
+  const abs = Math.abs(offsetHours);
+  const h = Math.floor(abs);
+  const mins = Math.round((abs - h) * 60);
+  return mins > 0 ? `UTC${sign}${h}:${String(mins).padStart(2, "0")}` : `UTC${sign}${h}`;
+}
+function convertTimestamps(text, offsetHours) {
+  const pad = (n) => String(n).padStart(2, "0");
+  const tzLabel = formatOffset(offsetHours);
+  const re = /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2}),\s+(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)\b/gi;
+  return text.replace(re, (match, monthStr, dayStr, yearStr, hourStr, minStr, _secStr, ampm) => {
+    var _a;
+    const month = (_a = MONTH_INDEX[monthStr.slice(0, 3).toLowerCase()]) != null ? _a : 0;
+    let hour = parseInt(hourStr);
+    const min = parseInt(minStr);
+    if (ampm.toUpperCase() === "AM") {
+      if (hour === 12)
+        hour = 0;
+    } else {
+      if (hour !== 12)
+        hour += 12;
+    }
+    const utcMs = Date.UTC(parseInt(yearStr), month, parseInt(dayStr), hour, min) - Math.round(offsetHours * 60) * 6e4;
+    const d = new Date(utcMs);
+    const utcStr = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
+    return `${utcStr} (${match} ${tzLabel})`;
+  });
+}
 var CyberScribe = class extends import_obsidian.Plugin {
   constructor() {
     super(...arguments);
     this.timerState = "idle";
-    this.timerPaused = false;
     this.timerElapsedAccum = 0;
     this.timerLastStart = null;
     this.timerInterval = null;
@@ -187,23 +241,16 @@ var CyberScribe = class extends import_obsidian.Plugin {
     const pad = (n) => String(n).padStart(2, "0");
     return `${pad(Math.floor(s / 60))}:${pad(s % 60)}`;
   }
-  investigationDurationMs() {
-    return this.settings.investigationMins * 60 * 1e3;
-  }
-  actionDurationMs() {
-    return this.settings.actionMins * 60 * 1e3;
-  }
   updateTimerBar() {
     if (this.timerBar) {
       if (!this.settings.timerEnabled || this.timerState === "idle") {
         this.timerBar.style.display = "none";
       } else {
         this.timerBar.style.display = "inline-flex";
-        const duration = this.timerState === "investigating" ? this.investigationDurationMs() : this.actionDurationMs();
+        const duration = this.timerState === "investigating" ? INVESTIGATION_DURATION : ACTION_DURATION;
         const remaining = Math.max(0, duration - this.timerElapsedMs());
         const icon = this.timerState === "investigating" ? "\u{1F50D}" : "\u270F\uFE0F";
-        const pauseIcon = this.timerPaused ? " \u23F8\uFE0F" : "";
-        this.timerBar.setText(`${icon} ${this.formatTime(remaining)}${pauseIcon}`);
+        this.timerBar.setText(`${icon} ${this.formatTime(remaining)}`);
       }
     }
     this.refreshTimerView();
@@ -227,14 +274,13 @@ var CyberScribe = class extends import_obsidian.Plugin {
   }
   startInvestigation() {
     this.timerState = "investigating";
-    this.timerPaused = false;
     this.timerElapsedAccum = 0;
     this.timerLastStart = Date.now();
     this.timerInterval = window.setInterval(() => {
-      if (this.timerElapsedMs() >= this.investigationDurationMs()) {
+      if (this.timerElapsedMs() >= INVESTIGATION_DURATION) {
         clearInterval(this.timerInterval);
         this.timerInterval = null;
-        this.timerElapsedAccum = this.investigationDurationMs();
+        this.timerElapsedAccum = INVESTIGATION_DURATION;
         this.timerLastStart = null;
         this.updateTimerBar();
         new import_obsidian.Notice("CyberScribe: Investigation time is up!");
@@ -245,11 +291,29 @@ var CyberScribe = class extends import_obsidian.Plugin {
     this.updateTimerBar();
   }
   handleTimerClick() {
-    if (this.timerState === "idle") return;
-    if (this.timerPaused) {
-      this.resumeTimer();
-    } else {
-      this.pauseTimer();
+    if (this.timerState === "investigating") {
+      if (this.timerInterval !== null) {
+        clearInterval(this.timerInterval);
+        this.timerInterval = null;
+      }
+      this.timerState = "acting";
+      this.timerElapsedAccum = 0;
+      this.timerLastStart = Date.now();
+      this.timerInterval = window.setInterval(() => {
+        if (this.timerElapsedMs() >= ACTION_DURATION) {
+          clearInterval(this.timerInterval);
+          this.timerInterval = null;
+          this.timerElapsedAccum = ACTION_DURATION;
+          this.timerLastStart = null;
+          this.updateTimerBar();
+          new import_obsidian.Notice("CyberScribe: Action time is up!");
+          return;
+        }
+        this.updateTimerBar();
+      }, 1e3);
+      this.updateTimerBar();
+    } else if (this.timerState === "acting") {
+      this.resetTimer();
     }
   }
   resetTimer() {
@@ -258,87 +322,8 @@ var CyberScribe = class extends import_obsidian.Plugin {
       this.timerInterval = null;
     }
     this.timerState = "idle";
-    this.timerPaused = false;
     this.timerElapsedAccum = 0;
     this.timerLastStart = null;
-    this.updateTimerBar();
-  }
-  pauseTimer() {
-    if (this.timerPaused || this.timerState === "idle") return;
-    if (this.timerInterval !== null) {
-      clearInterval(this.timerInterval);
-      this.timerInterval = null;
-    }
-    this.timerElapsedAccum = this.timerElapsedMs();
-    this.timerLastStart = null;
-    this.timerPaused = true;
-    this.updateTimerBar();
-  }
-  resumeTimer() {
-    if (!this.timerPaused || this.timerState === "idle") return;
-    this.timerPaused = false;
-    const duration = this.timerState === "investigating" ? this.investigationDurationMs() : this.actionDurationMs();
-    const noticeMsg = this.timerState === "investigating" ? "CyberScribe: Investigation time is up!" : "CyberScribe: Action time is up!";
-    this.timerLastStart = Date.now();
-    this.timerInterval = window.setInterval(() => {
-      if (this.timerElapsedMs() >= duration) {
-        clearInterval(this.timerInterval);
-        this.timerInterval = null;
-        this.timerElapsedAccum = duration;
-        this.timerLastStart = null;
-        this.updateTimerBar();
-        new import_obsidian.Notice(noticeMsg);
-        return;
-      }
-      this.updateTimerBar();
-    }, 1e3);
-    this.updateTimerBar();
-  }
-  startActing() {
-    if (this.timerInterval !== null) {
-      clearInterval(this.timerInterval);
-      this.timerInterval = null;
-    }
-    this.timerState = "acting";
-    this.timerPaused = false;
-    this.timerElapsedAccum = 0;
-    this.timerLastStart = Date.now();
-    this.timerInterval = window.setInterval(() => {
-      if (this.timerElapsedMs() >= this.actionDurationMs()) {
-        clearInterval(this.timerInterval);
-        this.timerInterval = null;
-        this.timerElapsedAccum = this.actionDurationMs();
-        this.timerLastStart = null;
-        this.updateTimerBar();
-        new import_obsidian.Notice("CyberScribe: Action time is up!");
-        return;
-      }
-      this.updateTimerBar();
-    }, 1e3);
-    this.updateTimerBar();
-  }
-  jumpToInvestigate() {
-    if (this.timerState !== "acting") return;
-    if (this.timerInterval !== null) {
-      clearInterval(this.timerInterval);
-      this.timerInterval = null;
-    }
-    this.timerState = "investigating";
-    this.timerPaused = false;
-    this.timerElapsedAccum = 0;
-    this.timerLastStart = Date.now();
-    this.timerInterval = window.setInterval(() => {
-      if (this.timerElapsedMs() >= this.investigationDurationMs()) {
-        clearInterval(this.timerInterval);
-        this.timerInterval = null;
-        this.timerElapsedAccum = this.investigationDurationMs();
-        this.timerLastStart = null;
-        this.updateTimerBar();
-        new import_obsidian.Notice("CyberScribe: Investigation time is up!");
-        return;
-      }
-      this.updateTimerBar();
-    }, 1e3);
     this.updateTimerBar();
   }
   inTimerScope(file) {
@@ -406,15 +391,53 @@ var CyberScribe = class extends import_obsidian.Plugin {
         editor.replaceSelection(utcDateTimeString());
       }
     });
+    this.addCommand({
+      id: "convert-timestamps",
+      name: "Convert local timestamps to UTC (selection or whole note)",
+      editorCallback: (editor) => {
+        const tc = this.settings.timeConvert;
+        if (!tc.enabled) {
+          new import_obsidian.Notice("CyberScribe: Time conversion is disabled in settings");
+          return;
+        }
+        const sel = editor.getSelection();
+        const input = sel || editor.getValue();
+        const converted = convertTimestamps(input, parseTimezoneOffset(tc.timezoneOffset));
+        if (converted === input) {
+          new import_obsidian.Notice("CyberScribe: No timestamp patterns found");
+          return;
+        }
+        if (sel)
+          editor.replaceSelection(converted);
+        else
+          editor.setValue(converted);
+        new import_obsidian.Notice("CyberScribe: Timestamps converted to UTC");
+      }
+    });
     this.registerEvent(
       this.app.workspace.on("editor-paste", (evt, editor) => {
         var _a;
-        if (this.settings.plainTextPaste) {
-          const text = (_a = evt.clipboardData) == null ? void 0 : _a.getData("text/plain");
-          if (text) {
-            evt.preventDefault();
-            editor.replaceSelection(text);
+        const text = (_a = evt.clipboardData) == null ? void 0 : _a.getData("text/plain");
+        if (!text)
+          return;
+        let result = text;
+        const tc = this.settings.timeConvert;
+        if (tc.enabled) {
+          const docText = editor.getValue();
+          const cursorOffset = editor.posToOffset(editor.getCursor());
+          const scopeRanges = getScopeRanges(docText, tc.scopeStart, tc.scopeEnd);
+          const inScope = scopeRanges.some((r) => cursorOffset >= r.from && cursorOffset <= r.to);
+          if (inScope) {
+            const converted = convertTimestamps(result, parseTimezoneOffset(tc.timezoneOffset));
+            if (converted !== result) {
+              result = converted;
+              new import_obsidian.Notice("CyberScribe: Timestamps converted to UTC");
+            }
           }
+        }
+        if (this.settings.plainTextPaste || result !== text) {
+          evt.preventDefault();
+          editor.replaceSelection(result);
         }
       })
     );
@@ -642,7 +665,7 @@ var CyberScribe = class extends import_obsidian.Plugin {
   }
   // ── Settings persistence ──────────────────────────────────────────────────
   async loadSettings() {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z;
     const saved = (_a = await this.loadData()) != null ? _a : {};
     this.settings = {
       ...DEFAULT_SETTINGS,
@@ -651,8 +674,6 @@ var CyberScribe = class extends import_obsidian.Plugin {
       dateTokens: (_c = saved.dateTokens) != null ? _c : DEFAULT_SETTINGS.dateTokens,
       timerEnabled: (_d = saved.timerEnabled) != null ? _d : DEFAULT_SETTINGS.timerEnabled,
       timerFolder: (_e = saved.timerFolder) != null ? _e : DEFAULT_SETTINGS.timerFolder,
-      investigationMins: saved.investigationMins != null ? saved.investigationMins : DEFAULT_SETTINGS.investigationMins,
-      actionMins: saved.actionMins != null ? saved.actionMins : DEFAULT_SETTINGS.actionMins,
       // Sanitize saved color rules — guard against missing/invalid fields from old versions (#10)
       colorRules: ((_f = saved.colorRules) != null ? _f : []).map((r) => {
         var _a2, _b2;
@@ -670,6 +691,12 @@ var CyberScribe = class extends import_obsidian.Plugin {
         urls: { ...DEFAULT_SETTINGS.defang.urls, ...(_n = (_m = saved.defang) == null ? void 0 : _m.urls) != null ? _n : {} },
         scopeStart: (_p = (_o = saved.defang) == null ? void 0 : _o.scopeStart) != null ? _p : "",
         scopeEnd: (_r = (_q = saved.defang) == null ? void 0 : _q.scopeEnd) != null ? _r : ""
+      },
+      timeConvert: {
+        enabled: (_t = (_s = saved.timeConvert) == null ? void 0 : _s.enabled) != null ? _t : false,
+        timezoneOffset: (_v = (_u = saved.timeConvert) == null ? void 0 : _u.timezoneOffset) != null ? _v : "+0",
+        scopeStart: (_x = (_w = saved.timeConvert) == null ? void 0 : _w.scopeStart) != null ? _x : "",
+        scopeEnd: (_z = (_y = saved.timeConvert) == null ? void 0 : _y.scopeEnd) != null ? _z : ""
       }
     };
   }
@@ -739,9 +766,6 @@ var TimerView = class extends import_obsidian.ItemView {
   async onOpen() {
     const { contentEl } = this;
     contentEl.addClass("cs-timer-panel");
-    new import_obsidian.Setting(contentEl).setName("Close panel").addButton(
-      (b) => b.setButtonText("✕ Close").onClick(() => this.leaf.detach())
-    );
     new import_obsidian.Setting(contentEl).setName("Investigation timer").addToggle(
       (t) => t.setValue(this.plugin.settings.timerEnabled).onChange(async (v) => {
         this.plugin.settings.timerEnabled = v;
@@ -769,48 +793,30 @@ var TimerView = class extends import_obsidian.ItemView {
       }
       return;
     }
-    const duration = state === "investigating" ? this.plugin.investigationDurationMs() : this.plugin.actionDurationMs();
+    const duration = state === "investigating" ? INVESTIGATION_DURATION : ACTION_DURATION;
     const remaining = Math.max(0, duration - this.plugin.timerElapsedMs());
-    const isPaused = this.plugin.timerPaused;
     if (state === "idle") {
       this.phaseEl.setText("No active investigation");
       this.timeEl.setText("\u2013");
     } else if (state === "investigating") {
-      this.phaseEl.setText(isPaused ? "\u{1F50D}  Investigation \u2014 On Hold" : "\u{1F50D}  Investigation");
+      this.phaseEl.setText("\u{1F50D}  Investigation");
       this.timeEl.setText(this.plugin.formatTime(remaining));
     } else {
-      this.phaseEl.setText(isPaused ? "\u270F\uFE0F  Taking Action \u2014 On Hold" : "\u270F\uFE0F  Taking Action");
+      this.phaseEl.setText("\u270F\uFE0F  Taking Action");
       this.timeEl.setText(this.plugin.formatTime(remaining));
     }
-    const renderKey = `${state}:${isPaused ? "paused" : "running"}`;
-    if (renderKey !== this.lastRenderedState) {
-      this.lastRenderedState = renderKey;
+    if (state !== this.lastRenderedState) {
+      this.lastRenderedState = state;
       this.btnEl.empty();
       if (state === "idle") {
         const btn = this.btnEl.createEl("button", { text: "Start Investigation", cls: "mod-cta cs-timer-btn" });
         btn.addEventListener("click", () => this.plugin.startInvestigation());
       } else if (state === "investigating") {
-        if (isPaused) {
-          const resume = this.btnEl.createEl("button", { text: "\u25B6\uFE0F Resume", cls: "mod-cta cs-timer-btn" });
-          resume.addEventListener("click", () => this.plugin.resumeTimer());
-        } else {
-          const hold = this.btnEl.createEl("button", { text: "\u23F8\uFE0F Hold", cls: "cs-timer-btn" });
-          hold.addEventListener("click", () => this.plugin.pauseTimer());
-        }
-        const act = this.btnEl.createEl("button", { text: "Take Action \u270F\uFE0F", cls: "cs-timer-btn" });
-        act.addEventListener("click", () => this.plugin.startActing());
+        const act = this.btnEl.createEl("button", { text: "Take Action  \u270F\uFE0F", cls: "cs-timer-btn" });
+        act.addEventListener("click", () => this.plugin.handleTimerClick());
         const rst = this.btnEl.createEl("button", { text: "Reset", cls: "mod-warning cs-timer-btn" });
         rst.addEventListener("click", () => this.plugin.resetTimer());
       } else {
-        if (isPaused) {
-          const resume = this.btnEl.createEl("button", { text: "\u25B6\uFE0F Resume", cls: "mod-cta cs-timer-btn" });
-          resume.addEventListener("click", () => this.plugin.resumeTimer());
-        } else {
-          const hold = this.btnEl.createEl("button", { text: "\u23F8\uFE0F Hold", cls: "cs-timer-btn" });
-          hold.addEventListener("click", () => this.plugin.pauseTimer());
-        }
-        const inv = this.btnEl.createEl("button", { text: "\u{1F50D} Investigate", cls: "cs-timer-btn" });
-        inv.addEventListener("click", () => this.plugin.jumpToInvestigate());
         const stop = this.btnEl.createEl("button", { text: "Stop", cls: "mod-warning cs-timer-btn" });
         stop.addEventListener("click", () => this.plugin.resetTimer());
       }
@@ -854,24 +860,6 @@ var SettingsTab = class extends import_obsidian.PluginSettingTab {
       (t) => t.setPlaceholder("e.g. Investigations").setValue(this.plugin.settings.timerFolder).onChange(async (v) => {
         this.plugin.settings.timerFolder = v;
         await this.plugin.saveSettings();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("Investigation duration (minutes)").setDesc("How long the investigation phase runs. Default: 5.").addText(
-      (t) => t.setPlaceholder("45").setValue(String(this.plugin.settings.investigationMins)).onChange(async (v) => {
-        const n = parseInt(v);
-        if (!isNaN(n) && n > 0) {
-          this.plugin.settings.investigationMins = n;
-          await this.plugin.saveSettings();
-        }
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("Action duration (minutes)").setDesc("How long the taking action phase runs. Default: 5.").addText(
-      (t) => t.setPlaceholder("20").setValue(String(this.plugin.settings.actionMins)).onChange(async (v) => {
-        const n = parseInt(v);
-        if (!isNaN(n) && n > 0) {
-          this.plugin.settings.actionMins = n;
-          await this.plugin.saveSettings();
-        }
       })
     );
     new import_obsidian.Setting(containerEl).setName("Color rules").setDesc("Highlight matched text in the editor and reading view. Up to 12 rules.").setHeading();
@@ -967,5 +955,31 @@ var SettingsTab = class extends import_obsidian.PluginSettingTab {
         })
       );
     }
+    new import_obsidian.Setting(containerEl).setName("Local time \u2192 UTC conversion").setDesc('On paste, convert timestamps like "May 27, 2026 12:17 PM" to UTC. Original time is kept in brackets.').setHeading();
+    new import_obsidian.Setting(containerEl).setName("Enable").setDesc("Convert local timestamps to UTC when pasting.").addToggle(
+      (t) => t.setValue(this.plugin.settings.timeConvert.enabled).onChange(async (v) => {
+        this.plugin.settings.timeConvert.enabled = v;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Local timezone").setDesc("UTC offset of the source timestamps. Examples: +8 for UTC+8, -5 for UTC-5, +5:30 for IST.").addText(
+      (t) => t.setPlaceholder("+8").setValue(this.plugin.settings.timeConvert.timezoneOffset).onChange(async (v) => {
+        this.plugin.settings.timeConvert.timezoneOffset = v;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Scope").setDesc("Limit conversion to the region between two regex markers. Leave blank to apply to the whole note.").setHeading();
+    new import_obsidian.Setting(containerEl).setName("Scope start").setDesc("Conversion applies only after the first match of this regex.").addText(
+      (t) => t.setPlaceholder("e.g.  ---EVENTS-START---").setValue(this.plugin.settings.timeConvert.scopeStart).onChange(async (v) => {
+        this.plugin.settings.timeConvert.scopeStart = v;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Scope end").setDesc("Conversion stops before the first match of this regex after the start.").addText(
+      (t) => t.setPlaceholder("e.g.  ---EVENTS-END---").setValue(this.plugin.settings.timeConvert.scopeEnd).onChange(async (v) => {
+        this.plugin.settings.timeConvert.scopeEnd = v;
+        await this.plugin.saveSettings();
+      })
+    );
   }
 };
