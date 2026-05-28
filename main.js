@@ -42,6 +42,185 @@ var FLAT_COLORS = [
 var VALID_COLORS = new Set(FLAT_COLORS.map((c) => c.value));
 var INVESTIGATION_DURATION = 45 * 60 * 1e3;
 var ACTION_DURATION = 20 * 60 * 1e3;
+function mountWinkAnimation(host) {
+  const B = 1, E = 2;
+  const BASE = [
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0],
+    [0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0],
+    [0,0,0,0,0,1,1,2,1,1,1,1,1,2,1,1,0,0,0,0],
+    [0,0,0,1,1,1,1,2,1,1,1,1,1,2,1,1,1,1,0,0],
+    [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0],
+    [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0],
+    [0,0,0,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,0,0],
+    [0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0],
+    [0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0],
+    [0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0],
+    [0,0,0,0,0,1,0,0,1,0,0,0,1,0,0,1,0,0,0,0],
+    [0,0,0,0,0,1,0,0,1,0,0,0,1,0,0,1,0,0,0,0],
+    [0,0,0,0,0,1,0,0,1,0,0,0,1,0,0,1,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  ];
+  function pt(base, ops) { const o = base.map(r => r.slice()); for (const [r,c,v] of ops) o[r][c]=v; return o; }
+  function sh(base, dr, dc) {
+    const o = Array.from({length:20}, () => new Array(20).fill(0));
+    for (let r=0;r<20;r++) for (let c=0;c<20;c++) { const nr=r+dr,nc=c+dc; if(nr>=0&&nr<20&&nc>=0&&nc<20) o[nr][nc]=base[r][c]; }
+    return o;
+  }
+  const SQ=pt(BASE,[[6,13,B]]), WK=pt(BASE,[[6,13,B],[7,13,B]]), TL=sh(BASE,0,1);
+  const TW=pt(TL,[[6,14,B],[7,14,B]]), S1=pt(TW,[[4,17,B],[5,18,B]]);
+  const S2=pt(TW,[[3,18,B],[5,17,B]]), S3=pt(TW,[[4,18,B]]);
+  const TS=pt(TL,[[6,14,B]]), RS=pt(BASE,[[6,13,B]]);
+  const frames=[
+    {hold:1200,frame:BASE},{hold:100,frame:SQ},{hold:120,frame:WK},{hold:150,frame:TW},
+    {hold:120,frame:S1},{hold:100,frame:S2},{hold:100,frame:S3},{hold:400,frame:TW},
+    {hold:100,frame:TS},{hold:100,frame:RS},{hold:80,frame:BASE},{hold:800,frame:BASE},
+  ];
+  const canvas=document.createElement('canvas'); canvas.width=40; canvas.height=40;
+  canvas.style.cssText='display:block;width:40px;height:40px;image-rendering:pixelated;';
+  host.appendChild(canvas);
+  const ctx=canvas.getContext('2d');
+  function paint(grid) {
+    ctx.clearRect(0,0,40,40);
+    for(let r=0;r<20;r++) for(let c=0;c<20;c++) {
+      const v=grid[r][c]; if(!v) continue;
+      const x=c*2,y=r*2;
+      ctx.fillStyle=v===B?'#CD7F6A':'#111111'; ctx.fillRect(x,y,2,2);
+    }
+  }
+  let fi=0,t0=performance.now(),raf;
+  paint(frames[0].frame);
+  function tick(now){if(now-t0>=frames[fi].hold){fi=(fi+1)%frames.length;t0=now;paint(frames[fi].frame);}raf=requestAnimationFrame(tick);}
+  raf=requestAnimationFrame(tick);
+  return ()=>cancelAnimationFrame(raf);
+}
+function mountCodingAnimation(host) {
+  const PAL=['transparent','#CD7F6A','#111111','#d4dde2','#8a9199','#6e7278','#3a3c40','#b8bcc0','#2a2c30','#1c1e21'];
+  const E=0,B=1,Y=2,HL=3,HS=4,SC=5,LB=6,LG=7,DT=8,DL=9;
+  const BASE=[
+    [E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E],
+    [E,E,E,E,E,E,HL,HL,HL,HL,HL,HL,HL,HL,E,E,E,E,E,E],
+    [E,E,E,E,E,HL,HS,E,E,E,E,E,E,HS,HL,E,E,E,E,E],
+    [E,E,E,E,HL,HS,B,B,B,B,B,B,B,B,HS,HL,E,E,E,E],
+    [E,E,E,E,HL,HS,B,Y,B,B,B,B,Y,B,HS,HL,E,E,E,E],
+    [E,E,E,E,HL,HS,B,B,B,B,B,B,B,B,HS,HL,E,E,E,E],
+    [E,E,E,E,E,E,B,B,B,B,B,B,B,B,E,E,E,E,E,E],
+    [E,E,E,E,B,B,B,B,B,B,B,B,B,B,B,B,E,E,E,E],
+    [E,E,E,B,B,B,SC,SC,SC,SC,SC,SC,SC,SC,B,B,B,E,E,E],
+    [E,E,E,B,B,B,SC,SC,SC,SC,SC,SC,SC,SC,B,B,B,E,E,E],
+    [E,E,E,B,B,B,SC,SC,SC,LG,LG,SC,SC,SC,B,B,B,E,E,E],
+    [E,E,E,B,B,B,SC,SC,SC,LG,LG,SC,SC,SC,B,B,B,E,E,E],
+    [E,E,E,E,B,LB,LB,LB,LB,LB,LB,LB,LB,LB,LB,B,E,E,E,E],
+    [E,DT,DT,DT,DT,DT,DT,DT,DT,DT,DT,DT,DT,DT,DT,DT,DT,DT,DT,E],
+    [E,E,DL,DL,E,E,E,E,E,E,E,E,E,E,E,E,DL,DL,E,E],
+    [E,E,DL,DL,E,E,E,E,E,E,E,E,E,E,E,E,DL,DL,E,E],
+    [E,E,DL,DL,E,E,E,E,E,E,E,E,E,E,E,E,DL,DL,E,E],
+    [E,E,DL,DL,E,E,E,E,E,E,E,E,E,E,E,E,DL,DL,E,E],
+    [E,E,DL,DL,E,E,E,E,E,E,E,E,E,E,E,E,DL,DL,E,E],
+    [E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E],
+  ];
+  function pt(f,ops){const o=f.map(r=>r.slice());ops.forEach(([r,c,v])=>{if(r>=0&&r<20&&c>=0&&c<20)o[r][c]=v;});return o;}
+  function headBob(base){
+    const o=base.map(r=>r.slice()),src=[1,2,3,4,5].map(i=>base[i].slice());
+    for(const r of [1,2,3,4,5]) for(let c=0;c<20;c++){const v=base[r][c];if(v===HL||v===HS||v===B||v===Y)o[r][c]=E;}
+    for(let i=0;i<5;i++) for(let c=0;c<20;c++){const v=src[i][c];if((v===HL||v===HS||v===B||v===Y)&&i+2<=6)o[i+2][c]=v;}
+    return o;
+  }
+  const TYPE_L=pt(BASE,[[12,5,B]]),TYPE_R=pt(BASE,[[12,15,B]]),TYPE_BOTH=pt(BASE,[[12,5,B],[12,15,B]]);
+  const THINK=pt(BASE,[[4,7,B],[4,12,B],[3,7,Y],[3,12,Y]]),BLINK=pt(BASE,[[4,7,B],[4,12,B]]);
+  const BOB=headBob(BASE),BOB_L=pt(BOB,[[12,5,B]]),BOB_R=pt(BOB,[[12,15,B]]),CUR_ON=pt(THINK,[[9,13,LG]]);
+  const frames=[
+    {hold:180,frame:TYPE_L},{hold:180,frame:TYPE_R},{hold:180,frame:TYPE_L},{hold:180,frame:TYPE_R},
+    {hold:140,frame:TYPE_BOTH},{hold:180,frame:TYPE_L},{hold:180,frame:TYPE_R},
+    {hold:180,frame:BOB_L},{hold:180,frame:BOB_R},{hold:180,frame:TYPE_L},{hold:180,frame:TYPE_R},
+    {hold:90,frame:BLINK},{hold:90,frame:BASE},{hold:400,frame:THINK},
+    {hold:300,frame:CUR_ON},{hold:280,frame:THINK},{hold:300,frame:CUR_ON},{hold:200,frame:THINK},
+    {hold:180,frame:TYPE_L},{hold:180,frame:TYPE_R},{hold:180,frame:TYPE_BOTH},{hold:180,frame:TYPE_L},{hold:180,frame:TYPE_R},
+  ];
+  const canvas=document.createElement('canvas'); canvas.width=40; canvas.height=40;
+  canvas.style.cssText='display:block;width:40px;height:40px;image-rendering:pixelated;';
+  host.appendChild(canvas);
+  const ctx=canvas.getContext('2d');
+  function paint(grid){
+    ctx.clearRect(0,0,40,40);
+    for(let r=0;r<20;r++) for(let c=0;c<20;c++){
+      const v=grid[r][c]; if(!v) continue;
+      const x=c*2,y=r*2; ctx.fillStyle=PAL[v]; ctx.fillRect(x,y,2,2);
+    }
+  }
+  let fi=0,t0=performance.now(),raf;
+  paint(frames[0].frame);
+  function tick(now){if(now-t0>=frames[fi].hold){fi=(fi+1)%frames.length;t0=now;paint(frames[fi].frame);}raf=requestAnimationFrame(tick);}
+  raf=requestAnimationFrame(tick);
+  return ()=>cancelAnimationFrame(raf);
+}
+function mountDjAnimation(host) {
+  const PAL=['transparent','#CD7F6A','#111111','#c0d8e4','#2d2d2d','#5588cc','#555555','#ffffff','#eaf6fc','#7aaabb'];
+  const E=0,B=1,Y=2,W=7,HL=8,HS=9;
+  const BASE=[
+    [E,E,E,E,E,E,HL,HL,HL,HL,HL,HL,HL,HL,E,E,E,E,E,E],
+    [E,E,E,E,E,HL,HS,E,E,E,E,E,E,HS,HL,E,E,E,E,E],
+    [E,E,E,E,HL,HS,B,B,B,B,B,B,B,B,HS,HL,E,E,E,E],
+    [E,E,E,E,HL,HS,B,B,Y,B,B,B,Y,B,HS,HL,E,E,E,E],
+    [E,E,E,E,HL,HS,B,B,B,B,B,B,B,B,HS,HL,E,E,E,E],
+    [E,E,E,E,E,E,B,B,B,B,B,B,B,B,E,E,E,E,E,E],
+    [E,E,E,B,B,B,B,B,B,B,B,B,B,B,B,B,B,E,E,E],
+    [E,E,E,B,B,B,B,B,B,B,B,B,B,B,B,B,B,E,E,E],
+    [E,E,E,B,E,B,B,B,B,B,B,B,B,B,B,B,E,B,E,E],
+    [E,E,E,E,E,B,B,B,B,B,B,B,B,B,B,B,E,E,E,E],
+    [E,E,E,E,E,B,B,B,B,B,B,B,B,B,B,B,E,E,E,E],
+    [E,E,E,E,E,B,B,B,B,B,B,B,B,B,B,B,E,E,E,E],
+    [E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E],
+    [E,E,E,E,E,B,E,E,B,E,E,E,B,E,E,B,E,E,E,E],
+    [E,E,E,E,E,B,E,E,B,E,E,E,B,E,E,B,E,E,E,E],
+    [E,E,E,E,E,B,E,E,B,E,E,E,B,E,E,B,E,E,E,E],
+    [E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E],
+    [E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E],
+    [E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E],
+    [E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E],
+  ];
+  function sh(f,dr,dc){const o=Array.from({length:20},()=>new Array(20).fill(E));for(let r=0;r<20;r++)for(let c=0;c<20;c++){const nr=r+dr,nc=c+dc;if(nr>=0&&nr<20&&nc>=0&&nc<20)o[nr][nc]=f[r][c];}return o;}
+  function pt(f,ops){const o=f.map(r=>r.slice());ops.forEach(([r,c,v])=>{if(r>=0&&r<20&&c>=0&&c<20)o[r][c]=v;});return o;}
+  function px(f,pts){return pt(f,pts.map(([r,c])=>[r,c,W]));}
+  const CROUCH=pt(sh(BASE,1,0),[[9,2,B],[9,17,B]]),UP1=sh(BASE,-1,0);
+  const UP2=pt(sh(BASE,-2,0),[[7,1,B],[7,2,B],[7,18,B],[8,1,B]]);
+  const LAND=pt(BASE,[[16,3,W],[16,4,W],[16,15,W],[16,16,W]]);
+  const IMPACT=pt(sh(BASE,1,0),[[17,2,W],[17,3,W],[17,16,W],[17,17,W],[10,2,B],[10,17,B]]);
+  const TL=[[0,1],[1,1],[0,2]],TR=[[0,18],[1,18],[0,17]],ML=[[6,1],[7,0]],MR=[[6,19],[7,19]];
+  const BL=[[17,3],[18,4]],BR=[[17,16],[18,15]];
+  const NOTE_R=[[1,18,W],[2,18,W],[2,19,W]],NOTE_L=[[1,1,W],[2,1,W],[2,2,W]];
+  const frames=[
+    {hold:90,frame:px(CROUCH,[...TL,...TR])},{hold:80,frame:px(UP1,ML)},
+    {hold:140,frame:px(UP2,[...TL,...TR,...MR])},{hold:80,frame:px(UP1,TR)},
+    {hold:60,frame:px(LAND,TL)},{hold:80,frame:px(IMPACT,[...BL,...BR])},
+    {hold:80,frame:pt(px(BASE,[...TL,...TR]),NOTE_R)},{hold:100,frame:px(BASE,[...TL,...TR])},
+    {hold:90,frame:px(CROUCH,[...TL,...TR,...ML])},{hold:80,frame:px(UP1,[...TR,...MR])},
+    {hold:160,frame:px(UP2,[...TL,...TR,...ML,...MR])},{hold:80,frame:px(UP1,TL)},
+    {hold:60,frame:px(LAND,[...BL,...BR])},{hold:80,frame:px(IMPACT,[...BL,...BR,...MR])},
+    {hold:80,frame:pt(px(BASE,[...TL,...TR,...MR]),NOTE_L)},{hold:100,frame:px(BASE,[...TL,...TR,...ML,...MR])},
+  ];
+  const canvas=document.createElement('canvas'); canvas.width=40; canvas.height=40;
+  canvas.style.cssText='display:block;width:40px;height:40px;image-rendering:pixelated;';
+  host.appendChild(canvas);
+  const ctx=canvas.getContext('2d');
+  function paint(grid){
+    ctx.clearRect(0,0,40,40);
+    for(let r=0;r<20;r++) for(let c=0;c<20;c++){
+      const v=grid[r][c]; if(!v) continue;
+      const x=c*2,y=r*2; ctx.fillStyle=PAL[v]; ctx.fillRect(x,y,2,2);
+    }
+  }
+  let fi=0,t0=performance.now(),raf;
+  paint(frames[0].frame);
+  function tick(now){if(now-t0>=frames[fi].hold){fi=(fi+1)%frames.length;t0=now;paint(frames[fi].frame);}raf=requestAnimationFrame(tick);}
+  raf=requestAnimationFrame(tick);
+  return ()=>cancelAnimationFrame(raf);
+}
 var TIMER_VIEW_TYPE = "cyberscribe-timer";
 var DEFAULT_SETTINGS = {
   colorRules: [],
@@ -232,6 +411,7 @@ var CyberScribe = class extends import_obsidian.Plugin {
     this.timerInterval = null;
     this.timerBar = null;
     this.emptyOnOpen = /* @__PURE__ */ new Set();
+    this.activeOverlayDismiss = null;
   }
   timerElapsedMs() {
     return this.timerElapsedAccum + (this.timerLastStart !== null ? Date.now() - this.timerLastStart : 0);
@@ -273,6 +453,9 @@ var CyberScribe = class extends import_obsidian.Plugin {
     }
   }
   startInvestigation() {
+    this.dismissActiveOverlay();
+    this.activeOverlayDismiss = showPixelOverlay("", mountCodingAnimation, 0);
+    this.openTimerPanel();
     this.timerState = "investigating";
     this.timerElapsedAccum = 0;
     this.timerLastStart = Date.now();
@@ -282,6 +465,7 @@ var CyberScribe = class extends import_obsidian.Plugin {
         this.timerInterval = null;
         this.timerElapsedAccum = INVESTIGATION_DURATION;
         this.timerLastStart = null;
+        this.dismissActiveOverlay();
         this.updateTimerBar();
         new import_obsidian.Notice("CyberScribe: Investigation time is up!");
         return;
@@ -296,6 +480,8 @@ var CyberScribe = class extends import_obsidian.Plugin {
         clearInterval(this.timerInterval);
         this.timerInterval = null;
       }
+      this.dismissActiveOverlay();
+      this.activeOverlayDismiss = showPixelOverlay("", mountDjAnimation, 0);
       this.timerState = "acting";
       this.timerElapsedAccum = 0;
       this.timerLastStart = Date.now();
@@ -305,6 +491,7 @@ var CyberScribe = class extends import_obsidian.Plugin {
           this.timerInterval = null;
           this.timerElapsedAccum = ACTION_DURATION;
           this.timerLastStart = null;
+          this.dismissActiveOverlay();
           this.updateTimerBar();
           new import_obsidian.Notice("CyberScribe: Action time is up!");
           return;
@@ -316,11 +503,15 @@ var CyberScribe = class extends import_obsidian.Plugin {
       this.resetTimer();
     }
   }
+  dismissActiveOverlay() {
+    if (this.activeOverlayDismiss) { this.activeOverlayDismiss(); this.activeOverlayDismiss = null; }
+  }
   resetTimer() {
     if (this.timerInterval !== null) {
       clearInterval(this.timerInterval);
       this.timerInterval = null;
     }
+    this.dismissActiveOverlay();
     this.timerState = "idle";
     this.timerElapsedAccum = 0;
     this.timerLastStart = null;
@@ -465,6 +656,22 @@ var CyberScribe = class extends import_obsidian.Plugin {
           return;
         this.emptyOnOpen.delete(file.path);
         this.startInvestigation();
+      })
+    );
+    this.registerEvent(
+      this.app.vault.on("create", (file) => {
+        if (!file.path || !file.path.endsWith('.md')) return;
+        this.emptyOnOpen.add(file.path);
+        if (this.timerState !== "idle") return;
+        const dismissWink = showPixelOverlay("New Note", mountWinkAnimation, 60000);
+        function onWinkDismiss(e) {
+          if (e.type === 'keydown' && (e.ctrlKey || e.altKey || e.metaKey || e.key.length > 1)) return;
+          document.removeEventListener('keydown', onWinkDismiss);
+          document.removeEventListener('paste', onWinkDismiss);
+          dismissWink();
+        }
+        document.addEventListener('keydown', onWinkDismiss);
+        document.addEventListener('paste', onWinkDismiss);
       })
     );
     this.addCommand({
@@ -825,6 +1032,18 @@ var TimerView = class extends import_obsidian.ItemView {
   async onClose() {
   }
 };
+function showPixelOverlay(label, mountFn, durationMs) {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:fixed;top:39px;right:1200px;z-index:9999;display:flex;flex-direction:column;align-items:center;gap:4px;';
+  const host = document.createElement('div');
+  wrap.appendChild(host);
+  document.body.appendChild(wrap);
+  const stopAnim = mountFn(host);
+  let dismissed = false;
+  function dismiss() { if (dismissed) return; dismissed = true; stopAnim(); wrap.remove(); }
+  if (durationMs) setTimeout(dismiss, durationMs);
+  return dismiss;
+}
 var SettingsTab = class extends import_obsidian.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);

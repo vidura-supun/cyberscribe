@@ -96,6 +96,22 @@ The **status bar** shows the active phase and remaining time (e.g. `🔍 38:22` 
 
 ---
 
+### Pixel Animations
+
+Small sprite animations appear in the top bar to reflect your current workflow state.
+
+| Trigger | Animation | Duration |
+|---|---|---|
+| New note created (timer idle) | Wink | Until you type or paste, or 1 minute |
+| Investigation timer starts | Coding | Full investigation phase |
+| Take Action clicked | DJ bounce | Full action phase |
+
+- Creating a new note while the timer is already running does not interrupt the active animation.
+- Switching phases (Investigate → Take Action) replaces the animation immediately.
+- Timer depletion, Reset, or Stop dismisses the animation.
+
+---
+
 ### Color Rules
 Define up to 12 regex → color rules to highlight matching text inline, in both Live Preview and Reading view.
 
