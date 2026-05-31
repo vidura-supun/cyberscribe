@@ -228,6 +228,7 @@ var DEFAULT_SETTINGS = {
   dateTokens: true,
   timerEnabled: true,
   timerFolder: "",
+  pixelAnimations: true,
   defang: {
     ips: {
       regex: String.raw`\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b`,
@@ -454,7 +455,7 @@ var CyberScribe = class extends import_obsidian.Plugin {
   }
   startInvestigation() {
     this.dismissActiveOverlay();
-    this.activeOverlayDismiss = showPixelOverlay("", mountCodingAnimation, 0);
+    if (this.settings.pixelAnimations) this.activeOverlayDismiss = showPixelOverlay("", mountCodingAnimation, 0);
     this.openTimerPanel();
     this.timerState = "investigating";
     this.timerElapsedAccum = 0;
@@ -481,7 +482,7 @@ var CyberScribe = class extends import_obsidian.Plugin {
         this.timerInterval = null;
       }
       this.dismissActiveOverlay();
-      this.activeOverlayDismiss = showPixelOverlay("", mountDjAnimation, 0);
+      if (this.settings.pixelAnimations) this.activeOverlayDismiss = showPixelOverlay("", mountDjAnimation, 0);
       this.timerState = "acting";
       this.timerElapsedAccum = 0;
       this.timerLastStart = Date.now();
@@ -663,6 +664,7 @@ var CyberScribe = class extends import_obsidian.Plugin {
         if (!file.path || !file.path.endsWith('.md')) return;
         this.emptyOnOpen.add(file.path);
         if (this.timerState !== "idle") return;
+        if (!this.settings.pixelAnimations) return;
         const dismissWink = showPixelOverlay("New Note", mountWinkAnimation, 60000);
         function onWinkDismiss(e) {
           if (e.type === 'keydown' && (e.ctrlKey || e.altKey || e.metaKey || e.key.length > 1)) return;
@@ -881,6 +883,7 @@ var CyberScribe = class extends import_obsidian.Plugin {
       dateTokens: (_c = saved.dateTokens) != null ? _c : DEFAULT_SETTINGS.dateTokens,
       timerEnabled: (_d = saved.timerEnabled) != null ? _d : DEFAULT_SETTINGS.timerEnabled,
       timerFolder: (_e = saved.timerFolder) != null ? _e : DEFAULT_SETTINGS.timerFolder,
+      pixelAnimations: saved.pixelAnimations ?? DEFAULT_SETTINGS.pixelAnimations,
       // Sanitize saved color rules — guard against missing/invalid fields from old versions (#10)
       colorRules: ((_f = saved.colorRules) != null ? _f : []).map((r) => {
         var _a2, _b2;
@@ -1078,6 +1081,12 @@ var SettingsTab = class extends import_obsidian.PluginSettingTab {
     new import_obsidian.Setting(containerEl).setName("Investigation timer folder").setDesc("Only auto-start the timer for notes inside this folder (e.g. Investigations). Leave blank to apply vault-wide.").addText(
       (t) => t.setPlaceholder("e.g. Investigations").setValue(this.plugin.settings.timerFolder).onChange(async (v) => {
         this.plugin.settings.timerFolder = v;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Pixel animations").setDesc("Show pixel sprite animations when starting investigation or action phases.").addToggle(
+      (t) => t.setValue(this.plugin.settings.pixelAnimations).onChange(async (v) => {
+        this.plugin.settings.pixelAnimations = v;
         await this.plugin.saveSettings();
       })
     );
