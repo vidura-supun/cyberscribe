@@ -405,80 +405,6 @@ function mountCodingAnimation(host: HTMLElement): () => void {
   return () => cancelAnimationFrame(raf);
 }
 
-function mountDjAnimation(host: HTMLElement): () => void {
-  const PAL = ['transparent','#CD7F6A','#111111','#c0d8e4','#2d2d2d','#5588cc','#555555','#ffffff','#eaf6fc','#7aaabb'];
-  const E=0,B=1,Y=2,W=7,HL=8,HS=9;
-  const BASE = [
-    [E,E,E,E,E,E,HL,HL,HL,HL,HL,HL,HL,HL,E,E,E,E,E,E],
-    [E,E,E,E,E,HL,HS,E,E,E,E,E,E,HS,HL,E,E,E,E,E],
-    [E,E,E,E,HL,HS,B,B,B,B,B,B,B,B,HS,HL,E,E,E,E],
-    [E,E,E,E,HL,HS,B,B,Y,B,B,B,Y,B,HS,HL,E,E,E,E],
-    [E,E,E,E,HL,HS,B,B,B,B,B,B,B,B,HS,HL,E,E,E,E],
-    [E,E,E,E,E,E,B,B,B,B,B,B,B,B,E,E,E,E,E,E],
-    [E,E,E,B,B,B,B,B,B,B,B,B,B,B,B,B,B,E,E,E],
-    [E,E,E,B,B,B,B,B,B,B,B,B,B,B,B,B,B,E,E,E],
-    [E,E,E,B,E,B,B,B,B,B,B,B,B,B,B,B,E,B,E,E],
-    [E,E,E,E,E,B,B,B,B,B,B,B,B,B,B,B,E,E,E,E],
-    [E,E,E,E,E,B,B,B,B,B,B,B,B,B,B,B,E,E,E,E],
-    [E,E,E,E,E,B,B,B,B,B,B,B,B,B,B,B,E,E,E,E],
-    [E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E],
-    [E,E,E,E,E,B,E,E,B,E,E,E,B,E,E,B,E,E,E,E],
-    [E,E,E,E,E,B,E,E,B,E,E,E,B,E,E,B,E,E,E,E],
-    [E,E,E,E,E,B,E,E,B,E,E,E,B,E,E,B,E,E,E,E],
-    [E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E],
-    [E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E],
-    [E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E],
-    [E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E],
-  ];
-  function sh(f: number[][], dr: number, dc: number): number[][] {
-    const o=Array.from({length:20},()=>new Array(20).fill(E));
-    for(let r=0;r<20;r++) for(let c=0;c<20;c++) { const nr=r+dr,nc=c+dc; if(nr>=0&&nr<20&&nc>=0&&nc<20) o[nr][nc]=f[r][c]; }
-    return o;
-  }
-  function pt(f: number[][], ops: [number,number,number][]): number[][] {
-    const o=f.map(r=>r.slice()); ops.forEach(([r,c,v])=>{if(r>=0&&r<20&&c>=0&&c<20)o[r][c]=v;}); return o;
-  }
-  function px(f: number[][], pts: [number,number][]): number[][] { return pt(f, pts.map(([r,c]) => [r,c,W])); }
-  const CROUCH=pt(sh(BASE,1,0),[[9,2,B],[9,17,B]]), UP1=sh(BASE,-1,0);
-  const UP2=pt(sh(BASE,-2,0),[[7,1,B],[7,2,B],[7,18,B],[8,1,B]]);
-  const LAND=pt(BASE,[[16,3,W],[16,4,W],[16,15,W],[16,16,W]]);
-  const IMPACT=pt(sh(BASE,1,0),[[17,2,W],[17,3,W],[17,16,W],[17,17,W],[10,2,B],[10,17,B]]);
-  const TL: [number,number][] = [[0,1],[1,1],[0,2]], TR: [number,number][] = [[0,18],[1,18],[0,17]];
-  const ML: [number,number][] = [[6,1],[7,0]], MR: [number,number][] = [[6,19],[7,19]];
-  const BL: [number,number][] = [[17,3],[18,4]], BR: [number,number][] = [[17,16],[18,15]];
-  const NOTE_R: [number,number,number][] = [[1,18,W],[2,18,W],[2,19,W]];
-  const NOTE_L: [number,number,number][] = [[1,1,W],[2,1,W],[2,2,W]];
-  const frames = [
-    {hold:90,frame:px(CROUCH,[...TL,...TR])},{hold:80,frame:px(UP1,ML)},
-    {hold:140,frame:px(UP2,[...TL,...TR,...MR])},{hold:80,frame:px(UP1,TR)},
-    {hold:60,frame:px(LAND,TL)},{hold:80,frame:px(IMPACT,[...BL,...BR])},
-    {hold:80,frame:pt(px(BASE,[...TL,...TR]),NOTE_R)},{hold:100,frame:px(BASE,[...TL,...TR])},
-    {hold:90,frame:px(CROUCH,[...TL,...TR,...ML])},{hold:80,frame:px(UP1,[...TR,...MR])},
-    {hold:160,frame:px(UP2,[...TL,...TR,...ML,...MR])},{hold:80,frame:px(UP1,TL)},
-    {hold:60,frame:px(LAND,[...BL,...BR])},{hold:80,frame:px(IMPACT,[...BL,...BR,...MR])},
-    {hold:80,frame:pt(px(BASE,[...TL,...TR,...MR]),NOTE_L)},{hold:100,frame:px(BASE,[...TL,...TR,...ML,...MR])},
-  ];
-  const canvas = document.createElement('canvas'); canvas.width=40; canvas.height=40;
-  canvas.style.cssText = 'display:block;width:40px;height:40px;image-rendering:pixelated;';
-  host.appendChild(canvas);
-  const ctx = canvas.getContext('2d')!;
-  function paint(grid: number[][]) {
-    ctx.clearRect(0,0,40,40);
-    for (let r=0;r<20;r++) for (let c=0;c<20;c++) {
-      const v=grid[r][c]; if (!v) continue;
-      ctx.fillStyle = PAL[v]; ctx.fillRect(c*2, r*2, 2, 2);
-    }
-  }
-  let fi=0, t0=performance.now(), raf: number;
-  paint(frames[0].frame);
-  function tick(now: number) {
-    if (now-t0 >= frames[fi].hold) { fi=(fi+1)%frames.length; t0=now; paint(frames[fi].frame); }
-    raf = requestAnimationFrame(tick);
-  }
-  raf = requestAnimationFrame(tick);
-  return () => cancelAnimationFrame(raf);
-}
-
 function showPixelOverlay(label: string, mountFn: (host: HTMLElement) => () => void, durationMs: number): () => void {
   const wrap = document.createElement('div');
   wrap.style.cssText = 'position:fixed;top:39px;right:1200px;z-index:9999;display:flex;flex-direction:column;align-items:center;gap:4px;';
@@ -573,7 +499,6 @@ export default class CyberScribe extends Plugin {
     if (this.timerState === 'investigating') {
       if (this.timerInterval !== null) { clearInterval(this.timerInterval); this.timerInterval = null; }
       this.dismissActiveOverlay();
-      if (this.settings.pixelAnimations) this.activeOverlayDismiss = showPixelOverlay('', mountDjAnimation, 0);
       this.timerState = 'acting';
       this.timerElapsedAccum = 0;
       this.timerLastStart = Date.now();
@@ -1206,7 +1131,7 @@ class SettingsTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Pixel animations')
-      .setDesc('Show pixel sprite animations when starting investigation or action phases.')
+      .setDesc('Show pixel sprite animations for new notes and when starting an investigation.')
       .addToggle((t) =>
         t.setValue(this.plugin.settings.pixelAnimations).onChange(async (v) => {
           this.plugin.settings.pixelAnimations = v;

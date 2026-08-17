@@ -104,10 +104,9 @@ Small sprite animations appear in the top bar to reflect your current workflow s
 |---|---|---|
 | New note created (timer idle) | Wink | Until you type or paste, or 1 minute |
 | Investigation timer starts | Coding | Full investigation phase |
-| Take Action clicked | DJ bounce | Full action phase |
 
 - Creating a new note while the timer is already running does not interrupt the active animation.
-- Switching phases (Investigate → Take Action) replaces the animation immediately.
+- Switching phases (Investigate → Take Action) dismisses the animation immediately.
 - Timer depletion, Reset, or Stop dismisses the animation.
 
 ---
