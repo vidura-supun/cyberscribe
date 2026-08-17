@@ -32,13 +32,16 @@ interface DefangRule {
   enabled: boolean;
 }
 
+/** The two working phases of the timer. */
+type TimerPhase = 'investigating' | 'acting';
+type TimerState = TimerPhase | 'idle';
+
 interface PluginSettings {
   colorRules: ColorRule[];
   plainTextPaste: boolean;
   dateTokens: boolean;
   timerEnabled: boolean;
   timerFolder: string;
-  pixelAnimations: boolean;
   defang: {
     ips: DefangRule;
     domains: DefangRule;
@@ -78,13 +81,27 @@ const INVESTIGATION_DURATION = 45 * 60 * 1000;
 const ACTION_DURATION        = 20 * 60 * 1000;
 const TIMER_VIEW_TYPE        = 'cyberscribe-timer';
 
+const PHASE_DURATION: Record<TimerPhase, number> = {
+  investigating: INVESTIGATION_DURATION,
+  acting:        ACTION_DURATION,
+};
+
+const PHASE_LABEL: Record<TimerPhase, string> = {
+  investigating: 'Investigation',
+  acting:        'Taking Action',
+};
+
+const PHASE_ICON: Record<TimerPhase, string> = {
+  investigating: '🔍',
+  acting:        '✏️',
+};
+
 const DEFAULT_SETTINGS: PluginSettings = {
   colorRules: [],
   plainTextPaste: false,
   dateTokens: true,
   timerEnabled: true,
   timerFolder: '',
-  pixelAnimations: true,
   defang: {
     ips: {
       regex: String.raw`\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b`,
@@ -269,170 +286,34 @@ function convertTimestamps(text: string, offsetHours: number): string {
   });
 }
 
-// ─── Pixel animations ─────────────────────────────────────────────────────────
-
-function mountWinkAnimation(host: HTMLElement): () => void {
-  const B = 1, E = 2;
-  const BASE = [
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0],
-    [0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0],
-    [0,0,0,0,0,1,1,2,1,1,1,1,1,2,1,1,0,0,0,0],
-    [0,0,0,1,1,1,1,2,1,1,1,1,1,2,1,1,1,1,0,0],
-    [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0],
-    [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0],
-    [0,0,0,1,0,1,1,1,1,1,1,1,1,1,1,1,0,1,0,0],
-    [0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0],
-    [0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0],
-    [0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0],
-    [0,0,0,0,0,1,0,0,1,0,0,0,1,0,0,1,0,0,0,0],
-    [0,0,0,0,0,1,0,0,1,0,0,0,1,0,0,1,0,0,0,0],
-    [0,0,0,0,0,1,0,0,1,0,0,0,1,0,0,1,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-  ];
-  function pt(base: number[][], ops: [number,number,number][]): number[][] {
-    const o = base.map(r => r.slice());
-    for (const [r,c,v] of ops) o[r][c] = v;
-    return o;
-  }
-  function sh(base: number[][], dr: number, dc: number): number[][] {
-    const o = Array.from({length:20}, () => new Array(20).fill(0));
-    for (let r=0;r<20;r++) for (let c=0;c<20;c++) {
-      const nr=r+dr, nc=c+dc;
-      if (nr>=0&&nr<20&&nc>=0&&nc<20) o[nr][nc]=base[r][c];
-    }
-    return o;
-  }
-  const SQ=pt(BASE,[[6,13,B]]), WK=pt(BASE,[[6,13,B],[7,13,B]]), TL=sh(BASE,0,1);
-  const TW=pt(TL,[[6,14,B],[7,14,B]]), S1=pt(TW,[[4,17,B],[5,18,B]]);
-  const S2=pt(TW,[[3,18,B],[5,17,B]]), S3=pt(TW,[[4,18,B]]);
-  const TS=pt(TL,[[6,14,B]]), RS=pt(BASE,[[6,13,B]]);
-  const frames = [
-    {hold:1200,frame:BASE},{hold:100,frame:SQ},{hold:120,frame:WK},{hold:150,frame:TW},
-    {hold:120,frame:S1},{hold:100,frame:S2},{hold:100,frame:S3},{hold:400,frame:TW},
-    {hold:100,frame:TS},{hold:100,frame:RS},{hold:80,frame:BASE},{hold:800,frame:BASE},
-  ];
-  const canvas = document.createElement('canvas'); canvas.width=40; canvas.height=40;
-  canvas.style.cssText = 'display:block;width:40px;height:40px;image-rendering:pixelated;';
-  host.appendChild(canvas);
-  const ctx = canvas.getContext('2d')!;
-  function paint(grid: number[][]) {
-    ctx.clearRect(0,0,40,40);
-    for (let r=0;r<20;r++) for (let c=0;c<20;c++) {
-      const v=grid[r][c]; if (!v) continue;
-      ctx.fillStyle = v===B ? '#CD7F6A' : '#111111';
-      ctx.fillRect(c*2, r*2, 2, 2);
-    }
-  }
-  let fi=0, t0=performance.now(), raf: number;
-  paint(frames[0].frame);
-  function tick(now: number) {
-    if (now-t0 >= frames[fi].hold) { fi=(fi+1)%frames.length; t0=now; paint(frames[fi].frame); }
-    raf = requestAnimationFrame(tick);
-  }
-  raf = requestAnimationFrame(tick);
-  return () => cancelAnimationFrame(raf);
-}
-
-function mountCodingAnimation(host: HTMLElement): () => void {
-  const PAL = ['transparent','#CD7F6A','#111111','#d4dde2','#8a9199','#6e7278','#3a3c40','#b8bcc0','#2a2c30','#1c1e21'];
-  const E=0,B=1,Y=2,HL=3,HS=4,SC=5,LB=6,LG=7,DT=8,DL=9;
-  const BASE = [
-    [E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E],
-    [E,E,E,E,E,E,HL,HL,HL,HL,HL,HL,HL,HL,E,E,E,E,E,E],
-    [E,E,E,E,E,HL,HS,E,E,E,E,E,E,HS,HL,E,E,E,E,E],
-    [E,E,E,E,HL,HS,B,B,B,B,B,B,B,B,HS,HL,E,E,E,E],
-    [E,E,E,E,HL,HS,B,Y,B,B,B,B,Y,B,HS,HL,E,E,E,E],
-    [E,E,E,E,HL,HS,B,B,B,B,B,B,B,B,HS,HL,E,E,E,E],
-    [E,E,E,E,E,E,B,B,B,B,B,B,B,B,E,E,E,E,E,E],
-    [E,E,E,E,B,B,B,B,B,B,B,B,B,B,B,B,E,E,E,E],
-    [E,E,E,B,B,B,SC,SC,SC,SC,SC,SC,SC,SC,B,B,B,E,E,E],
-    [E,E,E,B,B,B,SC,SC,SC,SC,SC,SC,SC,SC,B,B,B,E,E,E],
-    [E,E,E,B,B,B,SC,SC,SC,LG,LG,SC,SC,SC,B,B,B,E,E,E],
-    [E,E,E,B,B,B,SC,SC,SC,LG,LG,SC,SC,SC,B,B,B,E,E,E],
-    [E,E,E,E,B,LB,LB,LB,LB,LB,LB,LB,LB,LB,LB,B,E,E,E,E],
-    [E,DT,DT,DT,DT,DT,DT,DT,DT,DT,DT,DT,DT,DT,DT,DT,DT,DT,DT,E],
-    [E,E,DL,DL,E,E,E,E,E,E,E,E,E,E,E,E,DL,DL,E,E],
-    [E,E,DL,DL,E,E,E,E,E,E,E,E,E,E,E,E,DL,DL,E,E],
-    [E,E,DL,DL,E,E,E,E,E,E,E,E,E,E,E,E,DL,DL,E,E],
-    [E,E,DL,DL,E,E,E,E,E,E,E,E,E,E,E,E,DL,DL,E,E],
-    [E,E,DL,DL,E,E,E,E,E,E,E,E,E,E,E,E,DL,DL,E,E],
-    [E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E,E],
-  ];
-  function pt(f: number[][], ops: [number,number,number][]): number[][] {
-    const o=f.map(r=>r.slice()); ops.forEach(([r,c,v])=>{if(r>=0&&r<20&&c>=0&&c<20)o[r][c]=v;}); return o;
-  }
-  function headBob(base: number[][]): number[][] {
-    const o=base.map(r=>r.slice()), src=[1,2,3,4,5].map(i=>base[i].slice());
-    for (const r of [1,2,3,4,5]) for (let c=0;c<20;c++) { const v=base[r][c]; if(v===HL||v===HS||v===B||v===Y) o[r][c]=E; }
-    for (let i=0;i<5;i++) for (let c=0;c<20;c++) { const v=src[i][c]; if((v===HL||v===HS||v===B||v===Y)&&i+2<=6) o[i+2][c]=v; }
-    return o;
-  }
-  const TYPE_L=pt(BASE,[[12,5,B]]), TYPE_R=pt(BASE,[[12,15,B]]), TYPE_BOTH=pt(BASE,[[12,5,B],[12,15,B]]);
-  const THINK=pt(BASE,[[4,7,B],[4,12,B],[3,7,Y],[3,12,Y]]), BLINK=pt(BASE,[[4,7,B],[4,12,B]]);
-  const BOB=headBob(BASE), BOB_L=pt(BOB,[[12,5,B]]), BOB_R=pt(BOB,[[12,15,B]]), CUR_ON=pt(THINK,[[9,13,LG]]);
-  const frames = [
-    {hold:180,frame:TYPE_L},{hold:180,frame:TYPE_R},{hold:180,frame:TYPE_L},{hold:180,frame:TYPE_R},
-    {hold:140,frame:TYPE_BOTH},{hold:180,frame:TYPE_L},{hold:180,frame:TYPE_R},
-    {hold:180,frame:BOB_L},{hold:180,frame:BOB_R},{hold:180,frame:TYPE_L},{hold:180,frame:TYPE_R},
-    {hold:90,frame:BLINK},{hold:90,frame:BASE},{hold:400,frame:THINK},
-    {hold:300,frame:CUR_ON},{hold:280,frame:THINK},{hold:300,frame:CUR_ON},{hold:200,frame:THINK},
-    {hold:180,frame:TYPE_L},{hold:180,frame:TYPE_R},{hold:180,frame:TYPE_BOTH},{hold:180,frame:TYPE_L},{hold:180,frame:TYPE_R},
-  ];
-  const canvas = document.createElement('canvas'); canvas.width=40; canvas.height=40;
-  canvas.style.cssText = 'display:block;width:40px;height:40px;image-rendering:pixelated;';
-  host.appendChild(canvas);
-  const ctx = canvas.getContext('2d')!;
-  function paint(grid: number[][]) {
-    ctx.clearRect(0,0,40,40);
-    for (let r=0;r<20;r++) for (let c=0;c<20;c++) {
-      const v=grid[r][c]; if (!v) continue;
-      ctx.fillStyle = PAL[v]; ctx.fillRect(c*2, r*2, 2, 2);
-    }
-  }
-  let fi=0, t0=performance.now(), raf: number;
-  paint(frames[0].frame);
-  function tick(now: number) {
-    if (now-t0 >= frames[fi].hold) { fi=(fi+1)%frames.length; t0=now; paint(frames[fi].frame); }
-    raf = requestAnimationFrame(tick);
-  }
-  raf = requestAnimationFrame(tick);
-  return () => cancelAnimationFrame(raf);
-}
-
-function showPixelOverlay(label: string, mountFn: (host: HTMLElement) => () => void, durationMs: number): () => void {
-  const wrap = document.createElement('div');
-  wrap.style.cssText = 'position:fixed;top:39px;right:1200px;z-index:9999;display:flex;flex-direction:column;align-items:center;gap:4px;';
-  const host = document.createElement('div');
-  wrap.appendChild(host);
-  document.body.appendChild(wrap);
-  const stopAnim = mountFn(host);
-  let dismissed = false;
-  function dismiss() { if (dismissed) return; dismissed = true; stopAnim(); wrap.remove(); }
-  if (durationMs) setTimeout(dismiss, durationMs);
-  return dismiss;
-}
-
 // ─── Main Plugin ──────────────────────────────────────────────────────────────
 
 export default class CyberScribe extends Plugin {
   settings: PluginSettings;
 
-  timerState: 'idle' | 'investigating' | 'acting' = 'idle';
-  private timerElapsedAccum = 0;
+  timerState: TimerState = 'idle';
+  timerPaused = false;
+  // Each phase keeps its own elapsed time so switching back and forth resumes where it left off
+  private timerElapsed: Record<TimerPhase, number> = { investigating: 0, acting: 0 };
   private timerLastStart: number | null = null;
   private timerInterval: number | null = null;
   private timerBar: HTMLElement | null = null;
   private emptyOnOpen = new Set<string>();
-  private activeOverlayDismiss: (() => void) | null = null;
 
   timerElapsedMs(): number {
-    return this.timerElapsedAccum + (this.timerLastStart !== null ? Date.now() - this.timerLastStart : 0);
+    if (this.timerState === 'idle') return 0;
+    const accum = this.timerElapsed[this.timerState];
+    return accum + (this.timerLastStart !== null ? Date.now() - this.timerLastStart : 0);
+  }
+
+  /** Duration of the active phase, or 0 when idle. */
+  phaseDuration(): number {
+    return this.timerState === 'idle' ? 0 : PHASE_DURATION[this.timerState];
+  }
+
+  /** True when the active phase has counted all the way down. */
+  phaseExpired(): boolean {
+    return this.timerState !== 'idle' && this.timerElapsedMs() >= PHASE_DURATION[this.timerState];
   }
 
   formatTime(ms: number): string {
@@ -447,10 +328,15 @@ export default class CyberScribe extends Plugin {
         this.timerBar.style.display = 'none';
       } else {
         this.timerBar.style.display = 'inline-flex';
-        const duration = this.timerState === 'investigating' ? INVESTIGATION_DURATION : ACTION_DURATION;
-        const remaining = Math.max(0, duration - this.timerElapsedMs());
-        const icon = this.timerState === 'investigating' ? '🔍' : '✏️';
-        this.timerBar.setText(`${icon} ${this.formatTime(remaining)}`);
+        const remaining = Math.max(0, this.phaseDuration() - this.timerElapsedMs());
+        const prefix = this.timerPaused ? '⏸ ' : '';
+        this.timerBar.setText(`${prefix}${PHASE_ICON[this.timerState]} ${this.formatTime(remaining)}`);
+        const other = PHASE_LABEL[this.timerState === 'investigating' ? 'acting' : 'investigating'];
+        this.timerBar.setAttribute(
+          'aria-label',
+          `${PHASE_LABEL[this.timerState]}${this.timerPaused ? ' (paused)' : ''}\n` +
+            `Click: switch to ${other}\nCtrl/middle-click: ${this.timerPaused ? 'resume' : 'pause'}`
+        );
       }
     }
     this.refreshTimerView();
@@ -472,64 +358,95 @@ export default class CyberScribe extends Plugin {
     }
   }
 
-  startInvestigation() {
-    this.dismissActiveOverlay();
-    if (this.settings.pixelAnimations) this.activeOverlayDismiss = showPixelOverlay('', mountCodingAnimation, 0);
-    this.openTimerPanel();
-    this.timerState = 'investigating';
-    this.timerElapsedAccum = 0;
-    this.timerLastStart = Date.now();
-    this.timerInterval = window.setInterval(() => {
-      if (this.timerElapsedMs() >= INVESTIGATION_DURATION) {
-        clearInterval(this.timerInterval!);
-        this.timerInterval = null;
-        this.timerElapsedAccum = INVESTIGATION_DURATION;
-        this.timerLastStart = null;
-        this.dismissActiveOverlay();
-        this.updateTimerBar();
-        new Notice('CyberScribe: Investigation time is up!');
-        return;
-      }
-      this.updateTimerBar();
-    }, 1000);
-    this.updateTimerBar();
-  }
-
-  handleTimerClick() {
-    if (this.timerState === 'investigating') {
-      if (this.timerInterval !== null) { clearInterval(this.timerInterval); this.timerInterval = null; }
-      this.dismissActiveOverlay();
-      this.timerState = 'acting';
-      this.timerElapsedAccum = 0;
-      this.timerLastStart = Date.now();
-      this.timerInterval = window.setInterval(() => {
-        if (this.timerElapsedMs() >= ACTION_DURATION) {
-          clearInterval(this.timerInterval!);
-          this.timerInterval = null;
-          this.timerElapsedAccum = ACTION_DURATION;
-          this.timerLastStart = null;
-          this.dismissActiveOverlay();
-          this.updateTimerBar();
-          new Notice('CyberScribe: Action time is up!');
-          return;
-        }
-        this.updateTimerBar();
-      }, 1000);
-      this.updateTimerBar();
-    } else if (this.timerState === 'acting') {
-      this.resetTimer();
+  private startTicking() {
+    if (this.timerInterval === null) {
+      this.timerInterval = window.setInterval(() => this.tick(), 1000);
     }
   }
 
-  private dismissActiveOverlay() {
-    if (this.activeOverlayDismiss) { this.activeOverlayDismiss(); this.activeOverlayDismiss = null; }
+  private stopTicking() {
+    if (this.timerInterval !== null) { clearInterval(this.timerInterval); this.timerInterval = null; }
+  }
+
+  /** Fold the time spent since the clock last started into the active phase's total. */
+  private accumulate() {
+    if (this.timerState !== 'idle' && this.timerLastStart !== null) {
+      this.timerElapsed[this.timerState] += Date.now() - this.timerLastStart;
+    }
+    this.timerLastStart = null;
+  }
+
+  private tick() {
+    if (this.timerState === 'idle' || this.timerPaused) return;
+    const phase = this.timerState;
+    if (this.timerElapsedMs() >= PHASE_DURATION[phase]) {
+      // Freeze the phase at its full duration but stay in it, so the other phase stays reachable
+      this.timerElapsed[phase] = PHASE_DURATION[phase];
+      this.timerLastStart = null;
+      this.stopTicking();
+      this.updateTimerBar();
+      new Notice(`CyberScribe: ${PHASE_LABEL[phase]} time is up!`);
+      return;
+    }
+    this.updateTimerBar();
+  }
+
+  startInvestigation() {
+    this.stopTicking();
+    this.openTimerPanel();
+    this.timerState = 'investigating';
+    this.timerPaused = false;
+    this.timerElapsed = { investigating: 0, acting: 0 };
+    this.timerLastStart = Date.now();
+    this.startTicking();
+    this.updateTimerBar();
+  }
+
+  /**
+   * Move to `phase`, banking the time spent in the current one. Both directions are allowed,
+   * and each phase resumes from its own remaining time rather than restarting from scratch.
+   */
+  switchPhase(phase: TimerPhase) {
+    if (this.timerState === 'idle' || this.timerState === phase) return;
+    this.accumulate();
+    this.timerState = phase;
+    this.timerPaused = false;
+    if (this.timerElapsed[phase] >= PHASE_DURATION[phase]) {
+      // Target phase is already spent — hold it at 00:00 instead of counting past its limit
+      this.stopTicking();
+    } else {
+      this.timerLastStart = Date.now();
+      this.startTicking();
+    }
+    this.updateTimerBar();
+  }
+
+  /** Switch to whichever phase is not currently active. */
+  togglePhase() {
+    if (this.timerState === 'idle') return;
+    this.switchPhase(this.timerState === 'investigating' ? 'acting' : 'investigating');
+  }
+
+  togglePause() {
+    // An expired phase has nothing left to pause or resume
+    if (this.timerState === 'idle' || this.phaseExpired()) return;
+    if (this.timerPaused) {
+      this.timerPaused = false;
+      this.timerLastStart = Date.now();
+      this.startTicking();
+    } else {
+      this.accumulate();
+      this.timerPaused = true;
+      this.stopTicking();
+    }
+    this.updateTimerBar();
   }
 
   resetTimer() {
-    if (this.timerInterval !== null) { clearInterval(this.timerInterval); this.timerInterval = null; }
-    this.dismissActiveOverlay();
+    this.stopTicking();
     this.timerState = 'idle';
-    this.timerElapsedAccum = 0;
+    this.timerPaused = false;
+    this.timerElapsed = { investigating: 0, acting: 0 };
     this.timerLastStart = null;
     this.updateTimerBar();
   }
@@ -681,20 +598,6 @@ export default class CyberScribe extends Plugin {
       this.app.vault.on('create', (file) => {
         if (!file.path || !file.path.endsWith('.md')) return;
         this.emptyOnOpen.add(file.path);
-        if (this.timerState !== 'idle') return;
-        if (!this.settings.pixelAnimations) return;
-        const dismissWink = showPixelOverlay('New Note', mountWinkAnimation, 60000);
-        function onWinkDismiss(e: Event) {
-          if (e.type === 'keydown') {
-            const ke = e as KeyboardEvent;
-            if (ke.ctrlKey || ke.altKey || ke.metaKey || ke.key.length > 1) return;
-          }
-          document.removeEventListener('keydown', onWinkDismiss);
-          document.removeEventListener('paste', onWinkDismiss);
-          dismissWink();
-        }
-        document.addEventListener('keydown', onWinkDismiss);
-        document.addEventListener('paste', onWinkDismiss);
       })
     );
 
@@ -707,6 +610,25 @@ export default class CyberScribe extends Plugin {
     });
 
     this.addCommand({
+      id: 'investigation-switch-phase',
+      name: 'Investigation: Switch between Investigation and Taking Action',
+      callback: () => {
+        if (this.timerState === 'idle') { new Notice('CyberScribe: No active investigation'); return; }
+        this.togglePhase();
+      },
+    });
+
+    this.addCommand({
+      id: 'investigation-toggle-pause',
+      name: 'Investigation: Pause / resume timer',
+      callback: () => {
+        if (this.timerState === 'idle') { new Notice('CyberScribe: No active investigation'); return; }
+        if (this.phaseExpired()) { new Notice('CyberScribe: This phase has already finished'); return; }
+        this.togglePause();
+      },
+    });
+
+    this.addCommand({
       id: 'investigation-reset',
       name: 'Investigation: Reset timer',
       callback: () => this.resetTimer(),
@@ -714,7 +636,14 @@ export default class CyberScribe extends Plugin {
 
     this.timerBar = this.addStatusBarItem();
     this.timerBar.addClass('cyberscribe-timer');
-    this.timerBar.addEventListener('click', () => this.handleTimerClick());
+    // Click switches phase; ctrl/cmd- or middle-click pauses without leaving the phase
+    this.timerBar.addEventListener('click', (evt: MouseEvent) => {
+      if (evt.ctrlKey || evt.metaKey) this.togglePause();
+      else this.togglePhase();
+    });
+    this.timerBar.addEventListener('auxclick', (evt: MouseEvent) => {
+      if (evt.button === 1) { evt.preventDefault(); this.togglePause(); }
+    });
     this.updateTimerBar();
   }
 
@@ -917,7 +846,6 @@ export default class CyberScribe extends Plugin {
       dateTokens:     saved.dateTokens     ?? DEFAULT_SETTINGS.dateTokens,
       timerEnabled:   saved.timerEnabled   ?? DEFAULT_SETTINGS.timerEnabled,
       timerFolder:    saved.timerFolder    ?? DEFAULT_SETTINGS.timerFolder,
-      pixelAnimations: saved.pixelAnimations ?? DEFAULT_SETTINGS.pixelAnimations,
       // Sanitize saved color rules — guard against missing/invalid fields from old versions (#10)
       colorRules: ((saved.colorRules ?? []) as Record<string, unknown>[]).map((r) => ({
         id:      typeof r.id      === 'string'  ? r.id      : (crypto.randomUUID?.() ?? Math.random().toString(36)),
@@ -1036,34 +964,47 @@ class TimerView extends ItemView {
       return;
     }
 
-    const duration  = state === 'investigating' ? INVESTIGATION_DURATION : ACTION_DURATION;
-    const remaining = Math.max(0, duration - this.plugin.timerElapsedMs());
+    const paused  = this.plugin.timerPaused;
+    const expired = this.plugin.phaseExpired();
 
     if (state === 'idle') {
       this.phaseEl.setText('No active investigation');
       this.timeEl.setText('–');
-    } else if (state === 'investigating') {
-      this.phaseEl.setText('🔍  Investigation');
-      this.timeEl.setText(this.plugin.formatTime(remaining));
     } else {
-      this.phaseEl.setText('✏️  Taking Action');
+      const remaining = Math.max(0, this.plugin.phaseDuration() - this.plugin.timerElapsedMs());
+      const suffix = paused ? '  (paused)' : expired ? '  (time up)' : '';
+      this.phaseEl.setText(`${PHASE_ICON[state]}  ${PHASE_LABEL[state]}${suffix}`);
       this.timeEl.setText(this.plugin.formatTime(remaining));
     }
+    // Dim the countdown while paused so the stopped clock is obvious at a glance
+    this.timeEl.style.opacity = paused ? '0.5' : '1';
 
-    if (state !== this.lastRenderedState) {
-      this.lastRenderedState = state;
+    // Buttons only need rebuilding when something they depend on changes
+    const key = `${state}|${paused}|${expired}`;
+    if (key !== this.lastRenderedState) {
+      this.lastRenderedState = key;
       this.btnEl.empty();
       if (state === 'idle') {
         const btn = this.btnEl.createEl('button', { text: 'Start Investigation', cls: 'mod-cta cs-timer-btn' });
         btn.addEventListener('click', () => this.plugin.startInvestigation());
-      } else if (state === 'investigating') {
-        const act = this.btnEl.createEl('button', { text: 'Take Action  ✏️', cls: 'cs-timer-btn' });
-        act.addEventListener('click', () => this.plugin.handleTimerClick());
+      } else {
+        const target: TimerPhase = state === 'investigating' ? 'acting' : 'investigating';
+        const swap = this.btnEl.createEl('button', {
+          text: `${PHASE_ICON[target]}  ${PHASE_LABEL[target]}`,
+          cls: 'mod-cta cs-timer-btn',
+        });
+        swap.addEventListener('click', () => this.plugin.switchPhase(target));
+
+        if (!expired) {
+          const pause = this.btnEl.createEl('button', {
+            text: paused ? '▶  Resume' : '⏸  Pause',
+            cls: 'cs-timer-btn',
+          });
+          pause.addEventListener('click', () => this.plugin.togglePause());
+        }
+
         const rst = this.btnEl.createEl('button', { text: 'Reset', cls: 'mod-warning cs-timer-btn' });
         rst.addEventListener('click', () => this.plugin.resetTimer());
-      } else {
-        const stop = this.btnEl.createEl('button', { text: 'Stop', cls: 'mod-warning cs-timer-btn' });
-        stop.addEventListener('click', () => this.plugin.resetTimer());
       }
     }
   }
@@ -1106,7 +1047,7 @@ class SettingsTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Investigation timer')
-      .setDesc('Auto-start a 45-minute countdown when content is pasted into an empty note. Click the status bar item to switch to Taking Action (⚡), click again to stop.')
+      .setDesc('Auto-start a 45-minute countdown when content is pasted into an empty note. Click the status bar item to switch between Investigation and Taking Action; ctrl- or middle-click to pause.')
       .addToggle((t) =>
         t.setValue(this.plugin.settings.timerEnabled).onChange(async (v) => {
           this.plugin.settings.timerEnabled = v;
@@ -1127,16 +1068,6 @@ class SettingsTab extends PluginSettingTab {
             this.plugin.settings.timerFolder = v;
             await this.plugin.saveSettings();
           })
-      );
-
-    new Setting(containerEl)
-      .setName('Pixel animations')
-      .setDesc('Show pixel sprite animations for new notes and when starting an investigation.')
-      .addToggle((t) =>
-        t.setValue(this.plugin.settings.pixelAnimations).onChange(async (v) => {
-          this.plugin.settings.pixelAnimations = v;
-          await this.plugin.saveSettings();
-        })
       );
 
     // ── Color Rules ──────────────────────────────────────────────────────────

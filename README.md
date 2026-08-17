@@ -82,32 +82,39 @@ Tracks time spent on each OODA phase — investigation (45 min) and taking actio
 | State | Buttons |
 |---|---|
 | Idle | Start Investigation |
-| Investigating | Take Action ✏️ · Reset |
-| Taking Action | Stop |
+| Investigating | ✏️ Taking Action · ⏸ Pause · Reset |
+| Taking Action | 🔍 Investigation · ⏸ Pause · Reset |
 
-- **Take Action** — switches to a fresh 20-minute action countdown.
-- **Stop / Reset** — clears the timer entirely.
+- **Switch phase** — the first button moves you to the other phase. This works in **both directions**, so you can go back to investigating if the action phase turns up something new.
+- Each phase keeps **its own remaining time**. Switching away banks the current phase's clock and switching back resumes it where you left off — it does not restart the countdown.
+- **Pause / Resume** — freezes the active phase's clock. The countdown dims and the status bar shows a `⏸` marker while paused. Switching phases automatically resumes.
+- **Reset** — clears both phases and returns to idle.
 
-The **status bar** shows the active phase and remaining time (e.g. `🔍 38:22` or `✏️ 14:05`). Clicking the status bar item while investigating advances to the action phase; clicking while taking action resets the timer.
+When a phase runs out it stops at `00:00` and shows *(time up)*, but stays selected so you can still switch to the other phase.
+
+**Status bar:**
+
+The status bar shows the active phase and remaining time (e.g. `🔍 38:22`, `✏️ 14:05`, or `⏸ 🔍 12:30` when paused).
+
+| Action | Result |
+|---|---|
+| Click | Switch between Investigation and Taking Action |
+| Ctrl-click (Cmd-click on macOS) | Pause / resume |
+| Middle-click | Pause / resume |
+
+**Commands:**
+
+| Command | Description |
+|---|---|
+| Investigation: Start timer | Begins a fresh investigation phase |
+| Investigation: Switch between Investigation and Taking Action | Toggles the active phase |
+| Investigation: Pause / resume timer | Freezes or resumes the active phase |
+| Investigation: Reset timer | Clears the timer |
+| Open investigation timer panel | Reveals the timer panel |
 
 **Settings:**
 - **Investigation timer** — enable/disable the feature globally.
 - **Investigation timer folder** — restrict auto-start to notes inside a specific folder (e.g. `OODAS`). Leave blank to apply vault-wide.
-
----
-
-### Pixel Animations
-
-Small sprite animations appear in the top bar to reflect your current workflow state.
-
-| Trigger | Animation | Duration |
-|---|---|---|
-| New note created (timer idle) | Wink | Until you type or paste, or 1 minute |
-| Investigation timer starts | Coding | Full investigation phase |
-
-- Creating a new note while the timer is already running does not interrupt the active animation.
-- Switching phases (Investigate → Take Action) dismisses the animation immediately.
-- Timer depletion, Reset, or Stop dismisses the animation.
 
 ---
 
